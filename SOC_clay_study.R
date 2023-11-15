@@ -1,4 +1,5 @@
 
+library(viridis)
 library(rgdal)
 library(plyr)
 library(foreign) #to read db files
@@ -9,9 +10,17 @@ library(sf)
 library(MASS) #for density estimates with kde2d
 library(rworldmap)
 
+library(dplyr) #for joining with the code lookup table
+
+library(ggplot2)
+library(ggExtra)
+library(ggpubr)
+library(paletteer)
 
 #define the palettes
-LUC_palette_red=rev(c("#009E73", "#F0E442", "#CC79A7"))
+LUC_palette_red=(c("#999999", "#0072B2", "#009E73", "#E69F00", "#CC79A7"))
+LUC_palette=c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
 köppen_palette=rev(magma(11))
 
 
@@ -45,7 +54,7 @@ Soilmap_Europe_shapefile <- readOGR(dsn = file.path("../../soilDB_shapefiles_and
 Soilmap_Europe_shapefile_WGS84 <- spTransform(Soilmap_Europe_shapefile,
                               crs(LUCAS_geodata_2015))
 STU_sgdbe <- read.dbf("../../soilDB_shapefiles_and_attributes/stu_sgdbe.dbf")
-STU_sgdbe <- read.dbf("../../soilDB_shapefiles_and_attributes/stu_sgdbe.dbf")
+SMU_sgdbe <- read.dbf("../../soilDB_shapefiles_and_attributes/smu_sgdbe.dbf")
 
 #spatial join
 SMU_LUCAS<-over(LUCAS_geodata_2009, Soilmap_Europe_shapefile_WGS84)$SMU
@@ -183,7 +192,7 @@ code=c(
 
 
 #<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
-#### work on the Koppen classification, 
+#### work on the Köppen classification, 
 #<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
 
 Koppen <- raster("../../../koppen_geiger_tif/1991_2020/koppen_geiger_0p01.tif")
@@ -243,8 +252,6 @@ LUCAS_geodata_2009_no_NA<-data.frame(LUCAS_geodata_2009[!is.na(LUCAS_geodata_200
 
 kde2d_est_2015 <- kde2d(x = LUCAS_geodata_2015_no_NA$coords.x1, y = LUCAS_geodata_2015_no_NA$coords.x2, h=4, n = 150, 
                         lims = c(range(LUCAS_geodata_2015_no_NA$coords.x1), range(LUCAS_geodata_2015_no_NA$coords.x2)))
-filled.contour(kde2d_est_2015,color.palette=colorRampPalette(c('white','darkred')))
-plot(worldmap, add=TRUE, lwd=0.5)
 
 png("./Appendix/Sampling_density.png", height = 5000, width = 2500, res=300)
 par(mar=c(5,5,1,1), mfrow=c(2,1))
@@ -298,39 +305,103 @@ LUCAS_geodata_WRB$KoppenClim <- as.factor(LUCAS_geodata_WRB$KoppenClim)
 
 
 
+#<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
+#### Land use
+#<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
+
+#loading the land use data and joining them to the dataset
+LUCAS_2009_primary <- read.csv("../2009/LUCAS_2009_primary/EU_2009_20200213.CSV.csv")
+LUCAS_LU_classes <- read.csv("../2009/LUCAS_2009_primary/LU_classes.csv") #loading the classes names lookup table
+colnames(LUCAS_LU_classes)<-c("LU1", "Class")
+merged_data <- merge(LUCAS_2009_primary[,c( "POINT_ID", "LU1" , "LU2", "LC1")], LUCAS_geodata_WRB, by = "POINT_ID")
+
+LC0<-substr(merged_data$LC1, 1,1)
+
+LC0[LC0=="A"]="Artificial"
+LC0[LC0=="B"]="Cropland"
+LC0[merged_data$LC1=="B70" | merged_data$LC1=="B81" | merged_data$LC1=="BP0"  | merged_data$LC1=="B81"]="Orchards/Wineyards"
+LC0[merged_data$LC1=="C10"]="Forest (Broadleaves)"
+LC0[merged_data$LC1=="C20"]="Forest (Conifer)"
+LC0[merged_data$LC1=="C30"]="Forest (Mixed)"
+LC0[LC0=="D"]="Shrubland"
+LC0[LC0=="E"]="Grassland"
+LC0[LC0=="F"]="Bare land"
+LC0[LC0=="G"]="Water body"
+LC0[LC0=="H"]="Wetland"
+
+LC0_simpl<-substr(merged_data$LC1, 1,1)
+
+LC0_simpl[LC0_simpl=="A"]="Artificial"
+LC0_simpl[LC0_simpl=="B"]="Cropland"
+LC0_simpl[LC0_simpl=="C"]="Forest"
+LC0_simpl[LC0_simpl=="D"]="Shrubland"
+LC0_simpl[LC0_simpl=="E"]="Grassland"
+LC0_simpl[LC0_simpl=="F"]="Bare land"
+LC0_simpl[LC0_simpl=="G"]="Water body"
+LC0_simpl[LC0_simpl=="H"]="Wetland"
+
+merged_data = cbind(merged_data, LC0, LC0_simpl)
+
+# Perform a left join to substitute codes with names
+LUCAS_geodata_2009_WRB_merged <- left_join(merged_data, LUCAS_LU_classes, by = "LU1")
+
+
+
 
 
 #<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
 #### Degraded soils by group
 #<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
 
-LUCAS_geodata_WRB$clay<-as.numeric(LUCAS_geodata_WRB$clay)
-LUCAS_geodata_WRB$OC<-as.numeric(LUCAS_geodata_WRB$OC)
+LUCAS_geodata_2009_WRB_merged$clay<-as.numeric(LUCAS_geodata_2009_WRB_merged$clay)
+LUCAS_geodata_2009_WRB_merged$OC<-as.numeric(LUCAS_geodata_2009_WRB_merged$OC)
 
 
 # Calculate the OC_clay_wrb values
-OC_clay_wrb <- with(LUCAS_geodata_WRB, OC / (clay * 10))
+OC_clay_wrb <- with(LUCAS_geodata_2009_WRB_merged, OC / (clay * 10))
 
 # Create a data frame with WRB and NUTS columns
-df <- data.frame(WRB = LUCAS_geodata_WRB$WRBFU_SMU_LV1, NUTS = LUCAS_geodata_WRB$NUTS_0)
+df.WRB <- data.frame(
+  WRB = LUCAS_geodata_2009_WRB_merged$WRBFU_SMU_LV1,
+  NUTS = LUCAS_geodata_2009_WRB_merged$Country,
+  LU = LUCAS_geodata_2009_WRB_merged$Class,
+  LC = LUCAS_geodata_2009_WRB_merged$LC0
+)
 
 # Count elements below a numerical criterion by WRB and NUTS
 threshold <- 1 / 13
 below_threshold <- OC_clay_wrb <= threshold
 
-# Create a table of counts by WRB and NUTS and calculate proportions by NUTS
-table_by_NUTS <- table(df$NUTS, below_threshold)
+# Create a table of counts by NUTS and calculate proportions by NUTS
+table_by_NUTS <- table(df.WRB$NUTS, below_threshold)
 proportions_by_NUTS <- prop.table(table_by_NUTS, margin = 1)
 
 # Create a table of counts by WRB and calculate proportions
-table_by_WRB <- table(df$WRB, below_threshold)
+table_by_WRB <- table(df.WRB$WRB, below_threshold)
 table_by_WRB<-table_by_WRB[rowSums(table_by_WRB)>50,]
 proportions_by_WRB <- prop.table(table_by_WRB, margin = 1)
 
+# Create a table of counts by country and NUTS and calculate proportions by NUTS
+table_by_LU_NUTS <- table(df.WRB$NUTS, df.WRB$LU, below_threshold)
+proportions_by_LU_NUTS <- prop.table(table_by_LU_NUTS, margin = 1)
 
-# Sort prportions_by_WRB table based on the number of negatives in descending order
+table_by_LU <- table(df.WRB$LU, below_threshold)
+proportions_by_LU <- prop.table(table_by_LU, margin = 1)
+
+table_by_LC <- table(df.WRB$LC, below_threshold)
+proportions_by_LC <- prop.table(table_by_LC, margin = 1)
+
+
+# Sort prportions based on the number of negatives in descending order
 proportions_by_WRB <- proportions_by_WRB[order(proportions_by_WRB[,"TRUE"], decreasing = TRUE),]
+proportions_by_NUTS <- proportions_by_NUTS[order(proportions_by_NUTS[,"TRUE"], decreasing = TRUE),]
+proportions_by_LU <- proportions_by_LU[order(proportions_by_LU[,"TRUE"], decreasing = TRUE),]
+proportions_by_LC <- proportions_by_LC[order(proportions_by_LC[,"TRUE"], decreasing = TRUE),]
+
 colnames(proportions_by_WRB)<- c("Healthy", "Degraded")
+colnames(proportions_by_NUTS)<- c("Healthy", "Degraded")
+colnames(proportions_by_LU)<- c("Healthy", "Degraded")
+colnames(proportions_by_LC)<- c("Healthy", "Degraded")
 
 # Create a named vector mapping WRB codes to denominations
 WRB_denominations <- setNames(WRB_LV1_dictionary$name, WRB_LV1_dictionary$code)
@@ -339,12 +410,113 @@ WRB_denominations <- setNames(WRB_LV1_dictionary$name, WRB_LV1_dictionary$code)
 denomination <- WRB_denominations[rownames(proportions_by_WRB)]
 
 
-png("./appendix/degraded_by_soilgroup.png", width=2000, height=1700, res=300)
+png("./appendix/degraded_by_soilgroup.png", width=2000, height=2000, res=300)
 par(mar=c(6,5,4,1))
 barpl<-barplot(t(proportions_by_WRB)*100, las=2, names.arg=denomination, col=c("cadetblue2", "firebrick1"),
                legend.text = TRUE, 
                args.legend = list(x = "topright",
-                                  inset = c(0.35, -0.13)),
+                                  inset = c(0.35, -0.17)),
                ylim=c(0,100),  ylab="Proportion of total data points considered (%)", main="")
 box()
+dev.off()
+
+
+
+
+png("./appendix/degraded_by_land_use.png", width=2000, height=2000, res=300)
+par(mar=c(9,5,4,1))
+barpl<-barplot(t(proportions_by_LU)*100, las=2, names.arg=rownames(proportions_by_LU), col=c("cadetblue2", "firebrick1"),
+               legend.text = TRUE, 
+               args.legend = list(x = "topright",
+                                  inset = c(0.35, -0.17)),
+               ylim=c(0,100),  ylab="Proportion of total data points considered (%)", main="")
+box()
+dev.off()
+
+png("./appendix/degraded_by_land_cover.png", width=2000, height=2000, res=300)
+par(mar=c(9,5,4,1))
+excluded_classes=c("Artificial", "Water body")
+which_excluded=rownames(proportions_by_LC) %in% excluded_classes
+barpl<-barplot(t(proportions_by_LC[!which_excluded,])*100, las=2, names.arg=rownames(proportions_by_LC[!which_excluded]), col=c("cadetblue2", "firebrick1"),
+               legend.text = TRUE, 
+               args.legend = list(x = "topright",
+                                  inset = c(0.35, -0.17)),
+               ylim=c(0,100),  ylab="Proportion of total data points considered (%)", main="")
+box()
+dev.off()
+
+
+
+png("./appendix/degraded_by_nation.png", width=2000, height=2000, res=300)
+par(mar=c(9,5,4,1))
+barpl<-barplot(t(proportions_by_NUTS)*100, las=2,  col=c("cadetblue2", "firebrick1"),
+               legend.text = TRUE, 
+               args.legend = list(x = "topright",
+                                  inset = c(0.35, -0.17)),
+               ylim=c(0,100),  ylab="Proportion of total data points considered (%)", main="")
+box()
+dev.off()
+
+
+
+#<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
+#### Plotting the space by land use
+#<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
+
+
+LUCAS_geodata_2009_WRB_merged$LC0 <- as.factor(LUCAS_geodata_2009_WRB_merged$LC0)
+LUCAS_geodata_2009_WRB_merged$LC0_simpl <- as.factor(LUCAS_geodata_2009_WRB_merged$LC0_simpl)
+LUCAS_geodata_2009_WRB_merged$clay <- LUCAS_geodata_2009_WRB_merged$clay *10
+
+
+considered_LC<-c("Bare land", "Cropland", "Forest", "Grassland", "Shrubland")
+considered_LC_reduced=c( "Cropland",  "Forest",    "Grassland")
+
+
+
+png("LUCAS_clay_C_LUC_groups_ggplot.png", width=2000, height=1700, res=300)
+# create scatter plot using ggplot() function
+plot <- ggplot(LUCAS_geodata_2009_WRB_merged[LUCAS_geodata_2009_WRB_merged$LC0_simpl %in% considered_LC_reduced,], aes(x=clay, y=OC, color=LC0_simpl))+
+  geom_point(aes(shape=LC0_simpl))+
+  theme(legend.position="none")+
+  theme_bw() +
+  ylim(-10, 200)+
+  theme(legend.position = "bottom") +
+  xlab(expression(paste("Clay (g ", kg^-1, " dw)"))) +
+  ylab(expression(paste("SOC (g ", kg^-1, " dw)")))+
+  #scale_colour_paletteer_d("MetBrewer::Juarez")+
+  #scale_shape_manual(values=c(8, 15, 16, 17, 9))+
+  scale_colour_manual(values = alpha(LUC_palette_red[2:4], 0.4)) +
+  geom_abline(intercept = 0, slope = 1/13, color="black", linetype="dashed", size=1)+
+  labs(shape= "", colour="")+ guides(colour = guide_legend(override.aes = list(size=5)))
+# use ggMarginal function to create
+# marginal histogram, boxplot and density plot
+marginal_plot<-ggMarginal(plot, type = "density", groupColour = TRUE, groupFill = TRUE)
+marginal_plot
+dev.off()
+
+
+png("LUCAS_clay_C_LUC_groups_ggplot_density.png", width=2000, height=1700, res=300)
+density<-ggplot(LUCAS_geodata_2009_WRB_merged[LUCAS_geodata_2009_WRB_merged$LC0_simpl %in% considered_LC_reduced,], aes(clay, OC)) +
+  stat_density_2d(geom = "polygon", aes(alpha = (..level..)^1.5, fill = LC0_simpl),  bins = 23)+
+  theme(legend.position="none")+
+  theme_bw() +
+  ylim(-10, 200)+
+  theme(legend.position = "bottom") +
+  xlab(expression(paste("Clay (g ", kg^-1, " dw)"))) +
+  ylab(expression(paste("SOC (g ", kg^-1, " dw)")))+
+  scale_fill_manual(values = alpha(LUC_palette_red[2:4], 0.6)) +
+  geom_abline(intercept = 0, slope = 1/13, color="black", linetype="dashed", size=1)+
+  labs(shape= "", colour="")+ theme(legend.position="none")
+density
+dev.off()
+
+
+
+png("./Figures/Fig1.png", width=3400, height=1700, res=300)
+
+figure <- ggarrange(marginal_plot,density,
+                    labels = c("A", "B"),
+                    ncol = 2, nrow = 1)
+figure
 dev.off()
