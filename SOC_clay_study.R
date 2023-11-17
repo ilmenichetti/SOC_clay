@@ -16,6 +16,15 @@ library(ggplot2)
 library(ggExtra)
 library(ggpubr)
 library(paletteer)
+library(ggokabeito)
+
+library(caret)
+library(parallel)
+
+#parallel processing (here used in CARET)
+library(doParallel)
+cluster <- makeCluster(detectCores() - 1)
+registerDoParallel(cluster)
 
 #define the palettes
 LUC_palette_red=(c("#999999", "#0072B2", "#009E73", "#E69F00", "#CC79A7"))
@@ -31,6 +40,15 @@ LUCAS_geodata_2015 <- readOGR(dsn = file.path("../2015/LUCAS2015_topsoildata_202
                          stringsAsFactors = F)
 LUCAS_geodata_2009 <- readOGR(dsn = file.path("../2009/SoilAttr_LUCAS2009/SoilAttr_LUCAS_2009.shp"),
                               stringsAsFactors = F)
+LUCAS_geodata_2012_BG_RO <- readOGR(dsn = file.path("../2009/SoilAttr_BG_RO/SoilAttr_LUCAS_2012_BG_RO.shp"),
+                              stringsAsFactors = F)
+LUCAS_geodata_2009_CYP_MLT <- readOGR(dsn = file.path("../2009/SoilAttr_CYP_MLT/SoilAttr_LUCAS_2009_CYP_MLT.shp"),
+                                    stringsAsFactors = F)
+LUCAS_geodata_Iceland <- readOGR(dsn = file.path("../2009/SoilAttr_ICELAND/SoilAttr_ICELAND.shp"),
+                                    stringsAsFactors = F)
+
+LUCAS_geodata_2009_2012 <- rbind(LUCAS_geodata_2009, LUCAS_geodata_2012_BG_RO, LUCAS_geodata_2009_CYP_MLT, LUCAS_geodata_Iceland)
+
 
 
 #load UNFCCC datasets
@@ -57,8 +75,8 @@ STU_sgdbe <- read.dbf("../../soilDB_shapefiles_and_attributes/stu_sgdbe.dbf")
 SMU_sgdbe <- read.dbf("../../soilDB_shapefiles_and_attributes/smu_sgdbe.dbf")
 
 #spatial join
-SMU_LUCAS<-over(LUCAS_geodata_2009, Soilmap_Europe_shapefile_WGS84)$SMU
-STU_LUCAS<-over(LUCAS_geodata_2009, Soilmap_Europe_shapefile_WGS84)$STU
+SMU_LUCAS<-over(LUCAS_geodata_2009_2012, Soilmap_Europe_shapefile_WGS84)$SMU
+STU_LUCAS<-over(LUCAS_geodata_2009_2012, Soilmap_Europe_shapefile_WGS84)$STU
 
 
 
@@ -197,9 +215,10 @@ code=c(
 
 Koppen <- raster("../../../koppen_geiger_tif/1991_2020/koppen_geiger_0p01.tif")
 
-KoppenValue=extract(Koppen, LUCAS_geodata_2009)
+
+KoppenValue=extract(Koppen, LUCAS_geodata_2009_2012)
 KoppenValue <- as.factor(KoppenValue)
-Koppen_dictionary <- mat.or.vec(length(levels(KoppenValue)), 2)
+Koppen_dictionary <- mat.or.vec(length(levels(KoppenValue)), 4)
 Koppen_dictionary[,1] <- levels(KoppenValue)
 Koppen_dictionary[,2] <- c("BWh  Arid, desert, hot",
                            "BWk  Arid, desert, cold",
@@ -212,31 +231,49 @@ Koppen_dictionary[,2] <- c("BWh  Arid, desert, hot",
                            "Dsb  Cold, dry summer, warm summer",
                            "Dfa  Cold, no dry season, hot summer",
                            "Dfb  Cold, no dry season, warm summer",
-                           "Dfc  Cold, no dry season, cold summer")
+                           "Dfc  Cold, no dry season, cold summer",
+                           "ET  Polar, tundra")
 
+#adding a simplified description
+Koppen_dictionary[,3] <- c("BWh, Desert, hot",
+                           "BWk, Desert, cold",
+                           "BSh, Steppe, hot",
+                           "BSk, Steppe, cold",
+                           "Csa, Mediterranean (hot summer)" ,
+                           "Csb, Mediterranean (warm summer)" ,
+                           "Cfa, Oceanic subtropical" ,
+                           "Cfb, Oceanic temperate",
+                           "Dsb, Continental (mediterranean influenced)",
+                           "Dfa, Continental humid (hot summer)",
+                           "Dfb, Continental humid (warm summer)",
+                           "Dfc, Continental (subartic)",
+                           "ET, Polar tundra")
+
+Koppen_dictionary[,4] <- c("BWh",
+                           "BWk",
+                           "BSh",
+                           "BSk",
+                           "Csa" ,
+                           "Csb" ,
+                           "Cfa" ,
+                           "Cfb",
+                           "Dsb",
+                           "Dfa",
+                           "Dfb",
+                           "Dfc",
+                           "ET")
 
 Koppen_dictionary <- as.data.frame(Koppen_dictionary)
-names(Koppen_dictionary) <- c("Value", "Climate")
+names(Koppen_dictionary) <- c("Value", "Climate", "Simplified", "Code")
 
-# create the vector of Köppen climate codes for 2009 data
-KoppenClim<- c()
-for(i in 1:length(KoppenValue)){
-  if(!is.na(KoppenValue[i])){
-    KoppenClim[i] <- Koppen_dictionary[Koppen_dictionary$Value==KoppenValue[i],]$Climate
-  } else {
-    KoppenClim[i] <- NA
-  }
-}
-
-
-KoppenClim<-as.factor(KoppenClim)
+KoppenClim <- Koppen_dictionary$Simplified[match(KoppenValue, Koppen_dictionary$Value)]
+#KoppenClim <- merge(data.frame(Value = KoppenValue), Koppen_dictionary[, c("Value", "Simplified")], by = "Value", all.x = TRUE)$Simplified
 
 
 # define the geographic area where we will work
 e <- as(extent( -25, 40, 36, 71), 'SpatialPolygons')
 crs(e) <- "+proj=longlat +datum=WGS84 +no_defs"
 Koppen_crop <- crop(Koppen, e)
-
 
 
 
@@ -248,23 +285,23 @@ worldmap <- getMap(resolution="low")
 
 
 LUCAS_geodata_2015_no_NA<-data.frame(LUCAS_geodata_2015[!is.na(LUCAS_geodata_2015$Clay),])
-LUCAS_geodata_2009_no_NA<-data.frame(LUCAS_geodata_2009[!is.na(LUCAS_geodata_2009$clay),])
+LUCAS_geodata_2009_2012_no_NA<-data.frame(LUCAS_geodata_2009_2012[!is.na(LUCAS_geodata_2009_2012$clay),])
 
 kde2d_est_2015 <- kde2d(x = LUCAS_geodata_2015_no_NA$coords.x1, y = LUCAS_geodata_2015_no_NA$coords.x2, h=4, n = 150, 
                         lims = c(range(LUCAS_geodata_2015_no_NA$coords.x1), range(LUCAS_geodata_2015_no_NA$coords.x2)))
 
-png("./Appendix/Sampling_density.png", height = 5000, width = 2500, res=300)
+png("./Appendix/Sampling_density.png", height = 4600, width = 2800, res=300)
 par(mar=c(5,5,1,1), mfrow=c(2,1))
 
-smoothScatter(x = LUCAS_geodata_2009_no_NA$coords.x1, y = LUCAS_geodata_2009_no_NA$coords.x2, nbin = 240, bandwidth=0.6,
+smoothScatter(x = LUCAS_geodata_2009_2012_no_NA$coords.x1, y = LUCAS_geodata_2009_2012_no_NA$coords.x2, nbin = 240, bandwidth=0.6,
               colramp = colorRampPalette(c("white", blues9)),
               nrpoints = 5000, ret.selection = FALSE,
               pch = ".", cex = 1.2, col = "black",
               transformation = function(x) x^.25,
               postPlotHook = box,
               xlab = "Longitude", ylab = "Latitude",
-              xaxs = par("xaxs"), yaxs = par("yaxs"), main="2009")
-points(LUCAS_geodata_2009_no_NA$coords.x1, y = LUCAS_geodata_2009_no_NA$coords.x2, pch = ".", cex = 1.2, col = "black")
+              xaxs = par("xaxs"), yaxs = par("yaxs"), main="2009", xlim=range(LUCAS_geodata_2009_2012_no_NA$coords.x1), ylim=range( LUCAS_geodata_2009_2012_no_NA$coords.x2))
+points(LUCAS_geodata_2009_2012_no_NA$coords.x1, y = LUCAS_geodata_2009_2012_no_NA$coords.x2, pch = ".", cex = 1.2, col = "black")
 plot(worldmap, add=TRUE, lwd=0.5)
 
 smoothScatter(x = LUCAS_geodata_2015_no_NA$coords.x1, y = LUCAS_geodata_2015_no_NA$coords.x2, nbin = 240, bandwidth=0.6,
@@ -274,7 +311,7 @@ smoothScatter(x = LUCAS_geodata_2015_no_NA$coords.x1, y = LUCAS_geodata_2015_no_
               transformation = function(x) x^.25,
               postPlotHook = box,
               xlab = "Longitude", ylab = "Latitude",
-              xaxs = par("xaxs"), yaxs = par("yaxs"), main="2015")
+              xaxs = par("xaxs"), yaxs = par("yaxs"), main="2015",range(LUCAS_geodata_2009_2012_no_NA$coords.x1), ylim=range( LUCAS_geodata_2009_2012_no_NA$coords.x2))
 plot(worldmap, add=TRUE, lwd=0.5)
 
 dev.off()
@@ -287,9 +324,12 @@ dev.off()
 
 
 # a bit of data massaging
-LUCAS_geodata_WRB<-cbind(LUCAS_geodata_2009@data, WRBFU=as.factor(WRBFU), WRBFU_group=as.factor(WRBFU_group), WRBFU_qual=as.factor(WRBFU_qual),
-                         WRBFU_SMU_LV1=as.factor(WRBFU_SMU_LV1), LUCAS_geodata_2009@coords, KoppenValue, KoppenClim)
+LUCAS_geodata_WRB<-cbind(LUCAS_geodata_2009_2012@data, WRBFU=as.factor(WRBFU), WRBFU_group=as.factor(WRBFU_group),
+                         WRBFU_qual=as.factor(WRBFU_qual),
+                         WRBFU_SMU_LV1=as.factor(WRBFU_SMU_LV1), LUCAS_geodata_2009_2012@coords, KoppenValue, KoppenClim)
+
 LUCAS_geodata_WRB<-na.omit(LUCAS_geodata_WRB)
+as.factor(LUCAS_geodata_WRB$Country)
 
 #some soil points are not well defined
 LUCAS_geodata_WRB<-LUCAS_geodata_WRB[!(LUCAS_geodata_WRB$WRBFU_group==levels(LUCAS_geodata_WRB$WRBFU_group)[1] | LUCAS_geodata_WRB$WRBFU_group==levels(LUCAS_geodata_WRB$WRBFU_group)[2] | LUCAS_geodata_WRB$WRBFU_group==levels(LUCAS_geodata_WRB$WRBFU_group)[3]),]
@@ -301,7 +341,6 @@ LUCAS_geodata_WRB$WRBFU_SMU_LV1<- droplevels(LUCAS_geodata_WRB$WRBFU_SMU_LV1)
 
 LUCAS_geodata_WRB$KoppenValue <- as.factor(LUCAS_geodata_WRB$KoppenValue)
 LUCAS_geodata_WRB$KoppenClim <- as.factor(LUCAS_geodata_WRB$KoppenClim)
-
 
 
 
@@ -319,7 +358,7 @@ LC0<-substr(merged_data$LC1, 1,1)
 
 LC0[LC0=="A"]="Artificial"
 LC0[LC0=="B"]="Cropland"
-LC0[merged_data$LC1=="B70" | merged_data$LC1=="B81" | merged_data$LC1=="BP0"  | merged_data$LC1=="B81"]="Orchards/Wineyards"
+LC0[merged_data$LC1=="B70" | merged_data$LC1=="B81" | merged_data$LC1=="BP0"  | merged_data$LC1=="B82"]="Orchards/Wineyards"
 LC0[merged_data$LC1=="C10"]="Forest (Broadleaves)"
 LC0[merged_data$LC1=="C20"]="Forest (Conifer)"
 LC0[merged_data$LC1=="C30"]="Forest (Mixed)"
@@ -342,9 +381,10 @@ LC0_simpl[LC0_simpl=="H"]="Wetland"
 
 merged_data = cbind(merged_data, LC0, LC0_simpl)
 
-# Perform a left join to substitute codes with names
-LUCAS_geodata_2009_WRB_merged <- left_join(merged_data, LUCAS_LU_classes, by = "LU1")
 
+
+# Perform a left join to substitute codes with names
+LUCAS_geodata_2009_2012_WRB_merged <- left_join(merged_data, LUCAS_LU_classes, by = "LU1")
 
 
 
@@ -353,20 +393,23 @@ LUCAS_geodata_2009_WRB_merged <- left_join(merged_data, LUCAS_LU_classes, by = "
 #### Degraded soils by group
 #<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
 
-LUCAS_geodata_2009_WRB_merged$clay<-as.numeric(LUCAS_geodata_2009_WRB_merged$clay)
-LUCAS_geodata_2009_WRB_merged$OC<-as.numeric(LUCAS_geodata_2009_WRB_merged$OC)
-
+LUCAS_geodata_2009_2012_WRB_merged$clay<-as.numeric(LUCAS_geodata_2009_2012_WRB_merged$clay)
+LUCAS_geodata_2009_2012_WRB_merged$OC<-as.numeric(LUCAS_geodata_2009_2012_WRB_merged$OC)
+names(LUCAS_geodata_2009_2012_WRB_merged)
 
 # Calculate the OC_clay_wrb values
-OC_clay_wrb <- with(LUCAS_geodata_2009_WRB_merged, OC / (clay * 10))
+OC_clay_wrb <- with(LUCAS_geodata_2009_2012_WRB_merged, OC / (clay * 10))
 
 # Create a data frame with WRB and NUTS columns
 df.WRB <- data.frame(
-  WRB = LUCAS_geodata_2009_WRB_merged$WRBFU_SMU_LV1,
-  NUTS = LUCAS_geodata_2009_WRB_merged$Country,
-  LU = LUCAS_geodata_2009_WRB_merged$Class,
-  LC = LUCAS_geodata_2009_WRB_merged$LC0
-)
+  WRB = LUCAS_geodata_2009_2012_WRB_merged$WRBFU_SMU_LV1,
+  NUTS = LUCAS_geodata_2009_2012_WRB_merged$Country,
+  LU = LUCAS_geodata_2009_2012_WRB_merged$Class,
+  LC = LUCAS_geodata_2009_2012_WRB_merged$LC0,
+  LC_simpl = LUCAS_geodata_2009_2012_WRB_merged$LC0_simpl, 
+  Koppenclim = LUCAS_geodata_2009_2012_WRB_merged$KoppenClim)
+
+
 
 # Count elements below a numerical criterion by WRB and NUTS
 threshold <- 1 / 13
@@ -381,13 +424,19 @@ table_by_WRB <- table(df.WRB$WRB, below_threshold)
 table_by_WRB<-table_by_WRB[rowSums(table_by_WRB)>50,]
 proportions_by_WRB <- prop.table(table_by_WRB, margin = 1)
 
-# Create a table of counts by country and NUTS and calculate proportions by NUTS
-table_by_LU_NUTS <- table(df.WRB$NUTS, df.WRB$LU, below_threshold)
-proportions_by_LU_NUTS <- prop.table(table_by_LU_NUTS, margin = 1)
+# Create a table of counts by land cover and NUTS and calculate proportions by NUTS
+table_by_LC_NUTS <- table(df.WRB$NUTS, df.WRB$LC_simpl, below_threshold)
+proportions_by_LC_NUTS <- prop.table(table_by_LC_NUTS, margin = 1)
 
+# Create a table of counts by land cover and Koppen and calculate proportions by NUTS
+table_by_LC_Koppen <- table(df.WRB$Koppenclim, df.WRB$LC_simpl, below_threshold)
+proportions_by_LC_Koppen <- prop.table(table_by_LC_Koppen, margin = 1)
+
+# Create a table of counts by land use and calculate proportions
 table_by_LU <- table(df.WRB$LU, below_threshold)
 proportions_by_LU <- prop.table(table_by_LU, margin = 1)
 
+# Create a table of counts by land cover and calculate proportions
 table_by_LC <- table(df.WRB$LC, below_threshold)
 proportions_by_LC <- prop.table(table_by_LC, margin = 1)
 
@@ -464,9 +513,9 @@ dev.off()
 #<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
 
 
-LUCAS_geodata_2009_WRB_merged$LC0 <- as.factor(LUCAS_geodata_2009_WRB_merged$LC0)
-LUCAS_geodata_2009_WRB_merged$LC0_simpl <- as.factor(LUCAS_geodata_2009_WRB_merged$LC0_simpl)
-LUCAS_geodata_2009_WRB_merged$clay <- LUCAS_geodata_2009_WRB_merged$clay *10
+LUCAS_geodata_2009_2012_WRB_merged$LC0 <- as.factor(LUCAS_geodata_2009_2012_WRB_merged$LC0)
+LUCAS_geodata_2009_2012_WRB_merged$LC0_simpl <- as.factor(LUCAS_geodata_2009_2012_WRB_merged$LC0_simpl)
+LUCAS_geodata_2009_2012_WRB_merged$clay <- LUCAS_geodata_2009_2012_WRB_merged$clay *10
 
 
 considered_LC<-c("Bare land", "Cropland", "Forest", "Grassland", "Shrubland")
@@ -476,7 +525,7 @@ considered_LC_reduced=c( "Cropland",  "Forest",    "Grassland")
 
 png("LUCAS_clay_C_LUC_groups_ggplot.png", width=2000, height=1700, res=300)
 # create scatter plot using ggplot() function
-plot <- ggplot(LUCAS_geodata_2009_WRB_merged[LUCAS_geodata_2009_WRB_merged$LC0_simpl %in% considered_LC_reduced,], aes(x=clay, y=OC, color=LC0_simpl))+
+plot <- ggplot(LUCAS_geodata_2009_2012_WRB_merged[LUCAS_geodata_2009_2012_WRB_merged$LC0_simpl %in% considered_LC_reduced,], aes(x=clay, y=OC, color=LC0_simpl))+
   geom_point(aes(shape=LC0_simpl))+
   theme(legend.position="none")+
   theme_bw() +
@@ -497,7 +546,7 @@ dev.off()
 
 
 png("LUCAS_clay_C_LUC_groups_ggplot_density.png", width=2000, height=1700, res=300)
-density<-ggplot(LUCAS_geodata_2009_WRB_merged[LUCAS_geodata_2009_WRB_merged$LC0_simpl %in% considered_LC_reduced,], aes(clay, OC)) +
+density<-ggplot(LUCAS_geodata_2009_2012_WRB_merged[LUCAS_geodata_2009_2012_WRB_merged$LC0_simpl %in% considered_LC_reduced,], aes(clay, OC)) +
   stat_density_2d(geom = "polygon", aes(alpha = (..level..)^1.5, fill = LC0_simpl),  bins = 23)+
   theme(legend.position="none")+
   theme_bw() +
@@ -520,3 +569,318 @@ figure <- ggarrange(marginal_plot,density,
                     ncol = 2, nrow = 1)
 figure
 dev.off()
+
+
+#<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
+#### Plotting degraded proportion by country and LC
+#<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
+
+reorder<-rev(order(rowSums(proportions_by_LC_NUTS[,c(2,3,4,5,6),1])))
+png("./Figures/Fig2_alt.png", width = 2500, height=2000, res=300)
+par(mar=c(8,5,3,2))
+barpl<-barplot(t(proportions_by_LC_NUTS[reorder[-c(1,2)],c(2,3,4,5,6),1])*100,  las=2, density=c(35) , angle=c(0,45,135),
+               col=LUC_palette_red, ylim=c(0,107), ylab="Healthy proportion of total points considered (%)")
+legend("topright", colnames(proportions_by_LC_NUTS[reorder,c(2,3,4,5,6),1]), density=c(35) , angle=c(0,45,135),
+       fill=LUC_palette_red, inset=c(0.15,-0.14),xpd=TRUE, ncol=3,
+       pch=NA, bty="n", cex=1.2)
+box()
+dev.off()
+
+
+
+png("./Figures/Fig2.png", width = 3300, height=2000, res=350)
+
+nf <- layout( matrix(c(1,2), ncol=2), 
+              widths=c(5,1))
+
+par(mar=c(8,5,1,1))
+reorder<-rev(order(rowSums(proportions_by_LC_NUTS[,,1])))
+barpl<-barplot(t(proportions_by_LC_NUTS[reorder[-c(1,2)],c(3,4,5,6),1])*100,  las=2, density=c(45) , angle=c(0,45,135),
+               col=LUC_palette_red[-1], ylim=c(0,107), ylab="Healthy proportion of total points considered (%)", beside = T)
+legend("topleft", colnames(proportions_by_LC_NUTS[reorder,c(3,4,5,6),1]), density=c(45) , angle=c(0,45,135),
+       fill=LUC_palette_red[-1], xpd=TRUE, ncol=4,
+       pch=NA, bty="n", cex=1)
+box()
+legend("topright", "(a)", bty="n", cex=0.6)
+
+
+par(mar=c(8,0,1,2))
+reorder2<-(order(proportions_by_NUTS[,2]))
+barpl<-barplot(t(proportions_by_NUTS[reorder2[-c(1,2)],])*100, las=2,  col=c("lightgreen", "tomato1"),
+               # legend.text = TRUE, 
+               # args.legend = list(x = "topright",
+               #                    inset = c(0.35, -0.17)),
+               xlim=c(0,100), ylim=c(0,27), ylab="", main="", horiz=T, yaxt="n", xlab=" heal./degr.  (%)")
+text(-5 , barpl-0.07, rownames(proportions_by_NUTS[reorder2[-c(1,2)],]), cex=0.6,  pos = 4)
+box()
+legend("topright", "(b)", bty="n", cex=0.6)
+# axis(3, 50, "Healthy proportion of total points considered (%)", tick=F)
+
+dev.off()
+  
+
+
+
+
+
+
+#<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
+#### Plotting degraded proportion by Koppen and LC
+#<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
+
+
+reorder_kop<-rev(order(rowSums(proportions_by_LC_Koppen[,,1])))
+proportions_by_LC_Koppen <- proportions_by_LC_Koppen[reorder_kop,,]
+
+KoppenClim<-as.factor(KoppenClim)
+
+
+classes_to_plot <-names(table(KoppenClim)[which(table(KoppenClim)>20)])
+classes_to_plot<-classes_to_plot[classes_to_plot !="ET, Polar tundra" & !is.na(classes_to_plot)]
+which_to_plot <- rownames(proportions_by_LC_Koppen) %in% classes_to_plot
+
+
+clim_codes <- substr(rownames(proportions_by_LC_Koppen[which_to_plot,c(2,3,4,5,6),1]),1,3)
+clim_names <- substr(rownames(proportions_by_LC_Koppen[which_to_plot,c(2,3,4,5,6),1]),6,40)
+
+png("./Figures/Fig3.png", width = 2500, height=2000, res=300)
+par(mar=c(16,5,3,2))
+barpl<-barplot(t(proportions_by_LC_Koppen[which_to_plot,c(2,3,4,5,6),1])*100,  las=2, density=c(35) , angle=c(0,45,135),
+               col=LUC_palette_red, ylim=c(0,107), ylab="Healthy proportion of total points considered (%)", 
+               names.arg=clim_names)
+legend("topright", colnames(proportions_by_LC_Koppen[which_to_plot,c(2,3,4,5,6),1]), density=c(35) , angle=c(0,45,135),
+       fill=LUC_palette_red, inset=c(0.15,-0.14),xpd=TRUE, ncol=5,
+       pch=NA, bty="n", cex=1)
+box()
+text(barpl, colSums(t(proportions_by_LC_Koppen[which_to_plot,c(2,3,4,5,6),1])*100)+3, clim_codes, cex=0.9)
+
+dev.off()
+
+
+
+
+
+
+#<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
+#### Random forest predictive model (exploration of variable importance)
+#<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
+
+#splitting training and validation (70%-30%)
+set.seed(123)
+LUCAS_geodata_WRB_rf<-LUCAS_geodata_2009_2012_WRB_merged[LUCAS_geodata_2009_2012_WRB_merged$OC<200,]
+colnames(LUCAS_geodata_WRB_rf)[colnames(LUCAS_geodata_WRB_rf)=="coords.x2"]="Lat"
+colnames(LUCAS_geodata_WRB_rf)[colnames(LUCAS_geodata_WRB_rf)=="coords.x1"]="Long"
+ind <- sample(2, nrow(LUCAS_geodata_WRB_rf), replace = TRUE, prob = c(0.7, 0.3))
+LUCAS_geodata_WRB_train<-LUCAS_geodata_WRB_rf[ind==1,]
+LUCAS_geodata_WRB_valid<-LUCAS_geodata_WRB_rf[ind==2,]
+
+
+# #two different attempts, with full LC classification and with just coarse classes
+# LUCAS_geodata_WRB_train_rf_full_LC<-LUCAS_geodata_WRB_train[,c("coarse", "clay", "silt", "sand", "pHinCaCl2", "OC", "CaCO3", "CEC", "Country", "Long", "Lat", "LC0")]
+# LUCAS_geodata_WRB_valid_rf_full_LC<-LUCAS_geodata_WRB_valid[,c("coarse", "clay", "silt", "sand", "pHinCaCl2", "OC", "CaCO3", "CEC", "Country", "Long", "Lat", "LC0")]
+# LUCAS_geodata_WRB_train_rf_WRB<-LUCAS_geodata_WRB_train[,c("coarse", "clay", "silt", "sand", "pHinCaCl2", "OC", "CaCO3", "CEC", "Country", "Long", "Lat", "LC0", "WRBFU_group")]
+# LUCAS_geodata_WRB_valid_rf_WRB<-LUCAS_geodata_WRB_valid[,c("coarse", "clay", "silt", "sand", "pHinCaCl2", "OC", "CaCO3", "CEC", "Country", "Long", "Lat", "LC0", "WRBFU_group")]
+# 
+# #constraining all the data frames to the same classes
+# type_list<-rep(NA, 11)
+# type_list[c(1:8,10,11)]<-"numeric"
+# type_list[c(9,12)]<-"factor"
+
+LUCAS_geodata_WRB_train_rf_full_LC<-LUCAS_geodata_WRB_train[,c("coarse", "clay", "silt", "sand", "pHinCaCl2", "OC", "CaCO3", "Country", "Long", "Lat", "LC0")]
+LUCAS_geodata_WRB_valid_rf_full_LC<-LUCAS_geodata_WRB_valid[,c("coarse", "clay", "silt", "sand", "pHinCaCl2", "OC", "CaCO3",  "Country", "Long", "Lat", "LC0")]
+LUCAS_geodata_WRB_train_rf_WRB<-LUCAS_geodata_WRB_train[,c("coarse", "clay", "silt", "sand", "pHinCaCl2", "OC", "CaCO3", "Country", "Long", "Lat", "LC0", "WRBFU_group")]
+LUCAS_geodata_WRB_valid_rf_WRB<-LUCAS_geodata_WRB_valid[,c("coarse", "clay", "silt", "sand", "pHinCaCl2", "OC", "CaCO3", "Country", "Long", "Lat", "LC0", "WRBFU_group")]
+
+#constraining all the data frames to the same classes
+type_list<-rep(NA, 11)
+type_list[c(1:7,9,10)]<-"numeric"
+type_list[c(8,11)]<-"factor"
+
+# Set the column types based on the 'type_list'
+for (i in seq_along(type_list)) {
+  if (type_list[i] == "character") {
+    LUCAS_geodata_WRB_train_rf_full_LC[, i] <- as.character(LUCAS_geodata_WRB_train_rf_full_LC[, i])
+    LUCAS_geodata_WRB_valid_rf_full_LC[, i] <- as.character(LUCAS_geodata_WRB_valid_rf_full_LC[, i])
+    LUCAS_geodata_WRB_train_rf_WRB[, i] <- as.character(LUCAS_geodata_WRB_train_rf_WRB[, i])
+    LUCAS_geodata_WRB_valid_rf_WRB[, i] <- as.character(LUCAS_geodata_WRB_valid_rf_WRB[, i])
+  } else if (type_list[i] == "numeric") {
+    LUCAS_geodata_WRB_train_rf_full_LC[, i] <- as.numeric(LUCAS_geodata_WRB_train_rf_full_LC[, i])
+    LUCAS_geodata_WRB_valid_rf_full_LC[, i] <- as.numeric(LUCAS_geodata_WRB_valid_rf_full_LC[, i])
+    LUCAS_geodata_WRB_train_rf_WRB[, i] <- as.numeric(LUCAS_geodata_WRB_train_rf_WRB[, i])
+    LUCAS_geodata_WRB_valid_rf_WRB[, i] <- as.numeric(LUCAS_geodata_WRB_valid_rf_WRB[, i])
+  } else if (type_list[i] == "factor") {
+    LUCAS_geodata_WRB_train_rf_full_LC[, i] <- as.factor(LUCAS_geodata_WRB_train_rf_full_LC[, i])
+    LUCAS_geodata_WRB_valid_rf_full_LC[, i] <- as.factor(LUCAS_geodata_WRB_valid_rf_full_LC[, i])
+    LUCAS_geodata_WRB_train_rf_WRB[, i] <- as.factor(LUCAS_geodata_WRB_train_rf_WRB[, i])
+    LUCAS_geodata_WRB_valid_rf_WRB[, i] <- as.factor(LUCAS_geodata_WRB_valid_rf_WRB[, i])
+  }
+  # Add more conditions for other types if necessary
+}
+
+
+
+#training the RF model
+
+#setting up parameters for the grid search with CARET
+control <- trainControl(
+                method = "cv",  # Cross-validation method
+                number = 5,  # Number of folds
+                verboseIter = TRUE )
+tunegrid <- expand.grid(mtry = seq(from=11, to=13))
+tunegrid <- expand.grid(mtry = seq(from=13, to=13))
+
+#fitting the extended RF model
+start<-Sys.time()
+rf.full_LC <- train(OC~.,
+                    data=LUCAS_geodata_WRB_train_rf_full_LC,
+                    method='parRF', #cforest, #RRF
+                    tuneGrid=tunegrid,
+                    trControl=control, 
+                    importance=T, allowParallel = T)
+end<-Sys.time()
+rf.full_LC.time<- end - start
+
+#minor data processong (there's a NA)
+NAs_note<-dim(LUCAS_geodata_WRB_train_rf_WRB)[1]-dim(na.omit(LUCAS_geodata_WRB_train_rf_WRB))[1]
+LUCAS_geodata_WRB_train_rf_WRB <- na.omit(LUCAS_geodata_WRB_train_rf_WRB)
+
+
+#fitting the WRB RF model
+start<-Sys.time()
+rf.WRB <- train(OC~.,
+                    data=LUCAS_geodata_WRB_train_rf_WRB,
+                    method='parRF', #cforest, #RRF
+                    tuneGrid=tunegrid,
+                    trControl=control, 
+                    importance=T, allowParallel = T)
+end<-Sys.time()
+rf.WRB.time<- end - start
+
+rf.full_LC
+rf.WRB
+
+#escluding fre minor classes not in the training dataset
+which <- levels(LUCAS_geodata_WRB_valid_rf_WRB$WRBFU_group)[levels(LUCAS_geodata_WRB_valid_rf_WRB$WRBFU_group) %in% levels(LUCAS_geodata_WRB_train_rf_WRB$WRBFU_group)]
+LUCAS_geodata_WRB_valid_rf_WRB<-LUCAS_geodata_WRB_valid_rf_WRB[LUCAS_geodata_WRB_valid_rf_WRB$WRBFU_group %in% which,]
+
+
+#calculate the residuals just in case
+residuals.full_LC=abs(predict(rf.full_LC, newdata = LUCAS_geodata_WRB_valid_rf_full_LC)  - LUCAS_geodata_WRB_valid_rf_full_LC$OC)
+residuals.WRB=abs(predict(rf.WRB, newdata = LUCAS_geodata_WRB_valid_rf_WRB)  - LUCAS_geodata_WRB_valid_rf_WRB$OC)
+
+# palette (colorblind) for plotting the extended land cover classes
+palette_LC0=rep(NA, 11)
+palette_LC0[1:2] = palette_okabe_ito(seq(1:2))
+palette_LC0[3] = palette_okabe_ito(4)
+palette_LC0[4] = palette_okabe_ito(3)
+palette_LC0[5] = palette_okabe_ito(3)
+palette_LC0[6] = palette_okabe_ito(3)
+palette_LC0[7:11] = palette_okabe_ito(seq(4:8))
+
+rf.full_LC.fit<-summary(lm(predict(rf.full_LC, newdata = LUCAS_geodata_WRB_valid_rf_full_LC) ~ LUCAS_geodata_WRB_valid_rf_full_LC$OC))
+rf.full_WRB.fit<-summary(lm(predict(rf.WRB, newdata = LUCAS_geodata_WRB_valid_rf_WRB) ~ LUCAS_geodata_WRB_valid_rf_WRB$OC))
+
+
+png("./Appendix/RF_model_validation.png", width=2200, height=4200, res=300)
+par(mfrow=c(2,1))
+
+plot(predict(rf.full_LC, newdata = LUCAS_geodata_WRB_valid_rf_full_LC), LUCAS_geodata_WRB_valid_rf_full_LC$OC, 
+     pch=as.numeric(LUCAS_geodata_WRB_valid_rf_full_LC$LC0), col=palette_LC0[as.numeric(LUCAS_geodata_WRB_valid_rf_full_LC$LC0)],
+     ylab="Predicted OC (g kg-1)", xlab="Measured OC (g kg-1)", main="Land cover ", ylim=c(0,200), xlim=c(0,200))
+legend("bottomright", levels(LUCAS_geodata_WRB_valid_rf_full_LC$LC0), pch=seq(1:9), col=palette_LC0)
+r2 = bquote(italic(R)^2 == .(format(round(rf.full_LC.fit$r.squared,2), digits = 3)))
+text(x = 13, y = 200, labels = r2)
+     
+abline(0,1, lty=2)
+
+
+plot(predict(rf.WRB, newdata = LUCAS_geodata_WRB_valid_rf_WRB), LUCAS_geodata_WRB_valid_rf_WRB$OC, 
+     pch=as.numeric(LUCAS_geodata_WRB_valid_rf_WRB$LC0), col=palette_LC0[as.numeric(LUCAS_geodata_WRB_valid_rf_WRB$LC0)],
+     ylab="Predicted OC (g kg-1)", xlab="Measured OC (g kg-1)", main="Land cover + WRB ",  ylim=c(0,200), xlim=c(0,200))
+#legend("bottomright", levels(LUCAS_geodata_WRB_valid_rf_WRB$LC0), pch=seq(1:9), col=LUC_palette_red)
+abline(0,1, lty=2)
+r2 = bquote(italic(R)^2 == .(format(round(rf.full_WRB.fit$r.squared,2), digits = 3)))
+text(x = 13, y = 200, labels = r2)
+
+dev.off()
+
+
+
+#importance of variables
+importance.full_LC<-varImp(rf.full_LC,
+                   sort=T,
+                   main="Variable Importance Plot")
+importance.WRB<-varImp(rf.WRB,
+                                sort=T,
+                                main="Variable Importance Plot")
+
+write.csv(importance.WRB$importance, file="./Appendix/varimp.csv")
+
+png("./Appendix/random_forest_reduced_importance.png", height=2000, width = 2000, res=300)
+plot(importance.full_LC)
+dev.off()
+
+
+
+
+
+#<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
+#### Decision tree predictive model (exploration)
+#<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
+
+
+trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+
+tree.full_LC = train(OC ~ .,
+             data=LUCAS_geodata_WRB_train_rf_full_LC,
+             method="rpart2",
+             trControl=trctrl,
+             tuneLength = 20)
+tree.full_LC
+rattle::fancyRpartPlot(tree.full_LC$finalModel)
+
+tree.full_LC_lm<-summary(lm(predict(tree.full_LC, newdata = LUCAS_geodata_WRB_valid_rf_full_LC) ~ LUCAS_geodata_WRB_valid_rf_full_LC$OC))
+plot(predict(tree.full_LC, newdata = LUCAS_geodata_WRB_valid_rf_full_LC), LUCAS_geodata_WRB_valid_rf_full_LC$OC, 
+    pch=as.numeric(LUCAS_geodata_WRB_valid_rf_full_LC$LC0), col=palette_LC0[as.numeric(LUCAS_geodata_WRB_valid_rf_full_LC$LC0)],
+    ylab = "Predicted OC (g kg-1)", xlab="Measured OC (g kg-1)", main="Land cover ", xlim=c(0,200), ylim=c(0,200))
+legend("bottomright", levels(LUCAS_geodata_WRB_valid_rf_full_LC$LC0), pch=seq(1:9), col=palette_LC0)
+r2 = bquote(italic(R)^2 == .(format(round(tree.full_LC_lm$r.squared,2), digits = 3)))
+text(x = 13, y = 200, labels = r2)
+
+
+# Create a grid of hyperparameters for rpart
+hyper_grid <- expand.grid(
+  cp = seq(0.001, 0.1, by = 0.001)  # Range for the complexity parameter (cp)
+)
+
+# Define the control parameters for cross-validation
+trctrl <- trainControl(
+  method = "cv", 
+  number = 5, 
+  verboseIter = TRUE
+)
+
+# Perform hyperparameter tuning using train function
+tree_tuned <- train(
+  OC ~ .,
+  data = LUCAS_geodata_WRB_train_rf_full_LC,
+  method = "rpart",
+  trControl = trctrl,
+  tuneGrid = hyper_grid
+)
+
+png("./Appendix/decison_tree_structure.png", width=3200, height=2200, res=300)
+rattle::fancyRpartPlot(tree_tuned$finalModel)
+dev.off()
+
+png("./Appendix/decison_tree_model_validation.png", width=2200, height=2200, res=300)
+tree.tuned_LC_lm<-summary(lm(predict(tree_tuned, newdata = LUCAS_geodata_WRB_valid_rf_full_LC) ~ LUCAS_geodata_WRB_valid_rf_full_LC$OC))
+plot(predict(tree_tuned, newdata = LUCAS_geodata_WRB_valid_rf_full_LC), LUCAS_geodata_WRB_valid_rf_full_LC$OC, 
+     pch=as.numeric(LUCAS_geodata_WRB_valid_rf_full_LC$LC0), col=palette_LC0[as.numeric(LUCAS_geodata_WRB_valid_rf_full_LC$LC0)],
+     ylab = "Predicted OC (g kg-1)", xlab="Measured OC (g kg-1)", main="Land cover ", xlim=c(0,200), ylim=c(0,200))
+legend("bottomright", levels(LUCAS_geodata_WRB_valid_rf_full_LC$LC0), pch=seq(1:9), col=palette_LC0)
+r2 = bquote(italic(R)^2 == .(format(round(tree.tuned_LC_lm$r.squared,2), digits = 3)))
+text(x = 13, y = 200, labels = r2)
+dev.off()
+
+
