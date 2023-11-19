@@ -7,6 +7,8 @@ library(raster)
 library(sp)
 library(sf)
 
+library(modeest)
+
 library(MASS) #for density estimates with kde2d
 library(rworldmap)
 
@@ -21,10 +23,22 @@ library(ggokabeito)
 library(caret)
 library(parallel)
 
+
 #parallel processing (here used in CARET)
 library(doParallel)
 cluster <- makeCluster(detectCores() - 1)
 registerDoParallel(cluster)
+
+
+# palette (colorblind) for plotting the extended land cover classes
+palette_LC0=rep(NA, 11)
+palette_LC0[1:2] = palette_okabe_ito(seq(1:2))
+palette_LC0[3] = palette_okabe_ito(4)
+palette_LC0[4] = palette_okabe_ito(3)
+palette_LC0[5] = palette_okabe_ito(3)
+palette_LC0[6] = palette_okabe_ito(3)
+palette_LC0[7:11] = palette_okabe_ito(seq(4:8))
+
 
 #define the palettes
 LUC_palette_red=(c("#999999", "#0072B2", "#009E73", "#E69F00", "#CC79A7"))
@@ -48,6 +62,7 @@ LUCAS_geodata_Iceland <- readOGR(dsn = file.path("../2009/SoilAttr_ICELAND/SoilA
                                     stringsAsFactors = F)
 
 LUCAS_geodata_2009_2012 <- rbind(LUCAS_geodata_2009, LUCAS_geodata_2012_BG_RO, LUCAS_geodata_2009_CYP_MLT, LUCAS_geodata_Iceland)
+
 
 
 
@@ -387,6 +402,59 @@ merged_data = cbind(merged_data, LC0, LC0_simpl)
 LUCAS_geodata_2009_2012_WRB_merged <- left_join(merged_data, LUCAS_LU_classes, by = "LU1")
 
 
+#calculate means and modes
+
+# Function to calculate mode using mlv with a specified method
+calculate_mode <- function(x, method) {
+  return(mlv(x, method = "venter"))
+}
+
+LUCAS_geodata_2009_2012_WRB_merged_filtered <- LUCAS_geodata_2009_2012_WRB_merged[LUCAS_geodata_2009_2012_WRB_merged$OC<200,]
+
+png("./Appendix/OC_Clay_modes.png", width = 3000, height=5000, res=320)
+par(mfrow=c(2,1))
+#OC
+means_OC <- tapply(LUCAS_geodata_2009_2012_WRB_merged_filtered$OC, LUCAS_geodata_2009_2012_WRB_merged_filtered$LC0_simpl, FUN = mean)
+medians_OC <- tapply(LUCAS_geodata_2009_2012_WRB_merged_filtered$OC, LUCAS_geodata_2009_2012_WRB_merged_filtered$LC0_simpl, FUN = median)
+modes_OC <- c()
+
+plot(density( LUCAS_geodata_2009_2012_WRB_merged_filtered$OC), main = "SOC", xlab = "C (g kg-1)", 
+     xlim = range(LUCAS_geodata_2009_2012_WRB_merged_filtered$OC), col=NA, ylim=c(0,0.1))
+# Create density histograms and add vertical lines for modes
+for (i in 1:length(levels(LUCAS_geodata_2009_2012_WRB_merged_filtered$LC0_simpl))) {
+  level=levels(LUCAS_geodata_2009_2012_WRB_merged_filtered$LC0_simpl)[i]
+  subset_data <- LUCAS_geodata_2009_2012_WRB_merged_filtered$OC[LUCAS_geodata_2009_2012_WRB_merged_filtered$LC0_simpl == level]
+  polygon(density(subset_data), col=prettyGraphs::add.alpha(palette_LC0[i]))
+  modes_OC[i] <-density(subset_data)$x[ which.max(density(subset_data)$y)]
+}
+
+for (i in 1:length(levels(LUCAS_geodata_2009_2012_WRB_merged_filtered$LC0_simpl))) {
+  abline(v = modes_OC[i], col = palette_LC0[i], lty = 2)
+}
+  
+#Clay
+means_Clay <- tapply(LUCAS_geodata_2009_2012_WRB_merged_filtered$clay, LUCAS_geodata_2009_2012_WRB_merged_filtered$LC0_simpl, FUN = mean)
+medians_Clay <- tapply(LUCAS_geodata_2009_2012_WRB_merged_filtered$clay, LUCAS_geodata_2009_2012_WRB_merged_filtered$LC0_simpl, FUN = median)
+modes_Clay <- c()
+
+
+plot(density( LUCAS_geodata_2009_2012_WRB_merged_filtered$clay), main = "Clay", xlab = "Clay (g kg-1)", 
+     xlim = range(LUCAS_geodata_2009_2012_WRB_merged_filtered$clay), col=NA, ylim=c(0,0.01))
+# Create density histograms and add vertical lines for modes
+for (i in 1:length(levels(LUCAS_geodata_2009_2012_WRB_merged_filtered$LC0_simpl))) {
+  level=levels(LUCAS_geodata_2009_2012_WRB_merged_filtered$LC0_simpl)[i]
+  subset_data <- LUCAS_geodata_2009_2012_WRB_merged_filtered$clay[LUCAS_geodata_2009_2012_WRB_merged_filtered$LC0_simpl == level]
+  polygon(density(subset_data), col=prettyGraphs::add.alpha(palette_LC0[i]))
+  modes_Clay[i] <-density(subset_data)$x[ which.max(density(subset_data)$y)]
+}
+
+for (i in 1:length(levels(LUCAS_geodata_2009_2012_WRB_merged_filtered$LC0_simpl))) {
+  abline(v = modes_Clay[i], col = palette_LC0[i], lty = 2)
+}
+
+dev.off()
+
+write.csv(round(data.frame(means_OC, medians_OC, modes_OC, means_Clay, medians_Clay, modes_Clay),1), file="./Appendix/modes_medians.csv")
 
 
 #<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
@@ -571,6 +639,62 @@ figure
 dev.off()
 
 
+
+
+#<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
+#### sink or source?
+#<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
+
+#load UNFCCC datasets
+load("../../../UNFCCC_data/UNFCCC.RData")
+
+nation_codes<-unique(LUCAS_geodata_2009_2012_WRB_merged$NUTS_0)
+nation_names<-unique(LUCAS_geodata_2009_2012_WRB_merged$Country)
+
+
+sinksource<-mat.or.vec(3,28)
+
+colnames(sinksource)=substr(FL_agg$Country, 1,2)
+colnames(sinksource)[25]="SK"
+colnames(sinksource)[26]="SI"
+colnames(sinksource)[27]="SE"
+colnames(sinksource)[8]="ES"
+colnames(sinksource)[9]="EE"
+
+#FL_agg$Country==GL_agg$Country==CL_agg$Country
+rownames(sinksource)<-c("Cropland","Grassland","Woodland")
+sinksource[1,]<-CL_agg$MinSoilNet
+sinksource[2,]<-GL_agg$MinSoilNet
+sinksource[3,]<-FL_agg$MinSoilNet
+
+relative_nondegr_by_nation_prop=mat.or.vec(3, length(nation_codes))
+sinksource_processed=mat.or.vec(3, length(nation_codes))
+rownames(sinksource_processed)<-c("Cropland","Grassland","Woodland")
+
+for(i in 1:length(nation_codes)){
+  nation<-nation_codes[i]
+  
+  #sink or source since 2010?
+  if(nation %in% colnames(sinksource)){
+    if(is.na(sinksource[1,colnames(sinksource)==nation])){sinksource_processed[1,i]=NA} else if(sinksource[1,colnames(sinksource)==nation]<0){sinksource_processed[1,i]="-"} else {sinksource_processed[1,i]="+"}
+    if(is.na(sinksource[2,colnames(sinksource)==nation])){sinksource_processed[2,i]=NA} else if(sinksource[2,colnames(sinksource)==nation]<0){sinksource_processed[2,i]="-"} else {sinksource_processed[2,i]="+"}
+    if(is.na(sinksource[3,colnames(sinksource)==nation])){sinksource_processed[3,i]=NA} else if(sinksource[3,colnames(sinksource)==nation]<0){sinksource_processed[3,i]="-"} else {sinksource_processed[3,i]="+"}
+  }else{
+    sinksource_processed[1,i]<-NA
+    sinksource_processed[2,i]<-NA
+    sinksource_processed[3,i]<-NA
+  }
+}
+
+colnames(sinksource_processed)<-nation_names
+
+
+sinksource_processed <- rbind(sinksource_processed, rep(NA, dim(sinksource_processed)[2]))
+rownames(sinksource_processed)[4] = "Shrubland"
+
+
+
+
 #<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
 #### Plotting degraded proportion by country and LC
 #<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
@@ -588,23 +712,40 @@ dev.off()
 
 
 
-png("./Figures/Fig2.png", width = 3300, height=2000, res=350)
+png("./Figures/Fig2.png", width = 3600, height=2000, res=350)
 
 nf <- layout( matrix(c(1,2), ncol=2), 
-              widths=c(5,1))
+              widths=c(10,1.6))
 
-par(mar=c(8,5,1,1))
+par(mar=c(7,4,1,0))
 reorder<-rev(order(rowSums(proportions_by_LC_NUTS[,,1])))
-barpl<-barplot(t(proportions_by_LC_NUTS[reorder[-c(1,2)],c(3,4,5,6),1])*100,  las=2, density=c(45) , angle=c(0,45,135),
+barpl<-barplot(t(proportions_by_LC_NUTS[reorder[-c(1,2)],c(3,4,5,6),1])*100,  las=2, density=c(30) , angle=c(0,45,135,90),
                col=LUC_palette_red[-1], ylim=c(0,107), ylab="Healthy proportion of total points considered (%)", beside = T)
-legend("topleft", colnames(proportions_by_LC_NUTS[reorder,c(3,4,5,6),1]), density=c(45) , angle=c(0,45,135),
+legend("topleft", colnames(proportions_by_LC_NUTS[reorder,c(3,4,5,6),1]), density=c(45) , angle=c(0,45,135, 90),
        fill=LUC_palette_red[-1], xpd=TRUE, ncol=4,
        pch=NA, bty="n", cex=1)
 box()
 legend("topright", "(a)", bty="n", cex=0.6)
+colnames(barpl) <- colnames(t(proportions_by_LC_NUTS[reorder[-c(1,2)],c(3,4,5,6),1]))
 
 
-par(mar=c(8,0,1,2))
+col_points=mat.or.vec(3, length(nation_codes))
+col_points[3,as.character(sinksource_processed[3,])=="+"]="firebrick"
+col_points[3,as.character(sinksource_processed[3,])=="-"]="chartreuse2"
+col_points[2,as.character(sinksource_processed[2,])=="+"]="firebrick"
+col_points[2,as.character(sinksource_processed[2,])=="-"]="chartreuse2"
+col_points[1,as.character(sinksource_processed[1,])=="+"]="firebrick"
+col_points[1,as.character(sinksource_processed[1,])=="-"]="chartreuse2"
+col_points<-as.data.frame(col_points)
+col_points[col_points==0] = "NA"
+colnames(col_points) <- nation_names
+
+for(i in 1:dim(barpl)[2]){
+text(barpl[,i], 1.2 + (t(proportions_by_LC_NUTS[reorder[-c(1,2)],c(3,4,5,6),1])*100)[,i], 
+     sinksource_processed[,colnames(sinksource_processed)==colnames(barpl)[i]], col=col_points[,colnames(sinksource_processed)==colnames(barpl)[i]])
+}
+
+par(mar=c(7,0,1,1))
 reorder2<-(order(proportions_by_NUTS[,2]))
 barpl<-barplot(t(proportions_by_NUTS[reorder2[-c(1,2)],])*100, las=2,  col=c("lightgreen", "tomato1"),
                # legend.text = TRUE, 
@@ -619,6 +760,63 @@ legend("topright", "(b)", bty="n", cex=0.6)
 dev.off()
   
 
+
+
+
+png("./Figures/Fig2_colorcoded.png", width = 3600, height=2000, res=350)
+
+nf <- layout( matrix(c(1,2), ncol=2), 
+              widths=c(10,1.6))
+
+col_points=mat.or.vec(4, length(nation_codes))
+col_points[3,as.character(sinksource_processed[3,])=="+"]="darkorange"
+col_points[3,as.character(sinksource_processed[3,])=="-"]="cadetblue2"
+col_points[2,as.character(sinksource_processed[2,])=="+"]="darkorange"
+col_points[2,as.character(sinksource_processed[2,])=="-"]="cadetblue2"
+col_points[1,as.character(sinksource_processed[1,])=="+"]="darkorange"
+col_points[1,as.character(sinksource_processed[1,])=="-"]="cadetblue2"
+col_points<-as.data.frame(col_points)
+col_points[col_points==0] = "lightgray"
+col_points[4,] = "lightgray"
+colnames(col_points) <- nation_names
+
+par(mar=c(7,4,1,0))
+reorder<-rev(order(rowSums(proportions_by_LC_NUTS[,,1])))
+barpl<-barplot(t(proportions_by_LC_NUTS[reorder[-c(1,2)],c(3,4,5,6),1])*100,  las=2,
+               col=prettyGraphs::add.alpha(unlist(col_points), 0.6), ylim=c(0,107), ylab="Healthy proportion of total points considered (%)", beside = T)
+
+barpl<-barplot(t(proportions_by_LC_NUTS[reorder[-c(1,2)],c(3,4,5,6),1])*100,  las=2, density=c(30) , angle=c(0,45,135,90),
+               col="black", ylim=c(0,107), ylab="Healthy proportion of total points considered (%)", beside = T, add=T)
+
+legend(1, 106, colnames(proportions_by_LC_NUTS[reorder,c(3,4,5,6),1]), 
+       fill="lightgray", xpd=TRUE, ncol=4,
+       pch=NA, bty="n", cex=1)
+legend(1, 106, colnames(proportions_by_LC_NUTS[reorder,c(3,4,5,6),1]), density=c(30) , angle=c(0,45,135, 90),
+       fill="black", xpd=TRUE, ncol=4,
+       pch=NA, bty="n", cex=1)
+legend(1,100, c("Sink (UNFCC data)", "Source (UNFCC data)"), fill=prettyGraphs::add.alpha(c("cadetblue2", "darkorange"), 0.6), xpd=TRUE, ncol=4,
+       pch=NA, bty="n", cex=1)
+box()
+legend("topright", "(a)", bty="n", cex=0.85)
+colnames(barpl) <- colnames(t(proportions_by_LC_NUTS[reorder[-c(1,2)],c(3,4,5,6),1]))
+
+#text(barpl, rep(c(4,3,4,4.5), 22) + t(proportions_by_LC_NUTS[reorder[-c(1,2)],c(3,4,5,6),1])*100, c("Cropland", "Forest", "Grassland", "Shrubland"), cex=0.55, srt = 90)
+#text(barpl, -2, c("Cr.", "Fo.", "Gr.", "Sh."), cex=0.52,  xpd = NA, srt = 90)
+text(barpl, -2, c("C", "F", "G", "S"), cex=0.6,  xpd = NA)
+
+par(mar=c(7,0,1,1))
+reorder2<-(order(proportions_by_NUTS[,2]))
+barpl<-barplot(t(proportions_by_NUTS[reorder2[-c(1,2)],])*100, las=2,  col=c("lightgreen", "tomato1"),
+               # legend.text = TRUE, 
+               # args.legend = list(x = "topright",
+               #                    inset = c(0.35, -0.17)),
+               xlim=c(0,100), ylim=c(0,27), ylab="", main="", horiz=T, yaxt="n", xlab=" heal./degr.  (%)")
+text(-5 , barpl-0.07, rownames(proportions_by_NUTS[reorder2[-c(1,2)],]), cex=0.6,  pos = 4)
+box()
+legend("topright", "(b)", bty="n", cex=0.85)
+# axis(3, 50, "Healthy proportion of total points considered (%)", tick=F)
+
+dev.off()
 
 
 
@@ -690,6 +888,8 @@ LUCAS_geodata_WRB_train_rf_full_LC<-LUCAS_geodata_WRB_train[,c("coarse", "clay",
 LUCAS_geodata_WRB_valid_rf_full_LC<-LUCAS_geodata_WRB_valid[,c("coarse", "clay", "silt", "sand", "pHinCaCl2", "OC", "CaCO3",  "Country", "Long", "Lat", "LC0")]
 LUCAS_geodata_WRB_train_rf_WRB<-LUCAS_geodata_WRB_train[,c("coarse", "clay", "silt", "sand", "pHinCaCl2", "OC", "CaCO3", "Country", "Long", "Lat", "LC0", "WRBFU_group")]
 LUCAS_geodata_WRB_valid_rf_WRB<-LUCAS_geodata_WRB_valid[,c("coarse", "clay", "silt", "sand", "pHinCaCl2", "OC", "CaCO3", "Country", "Long", "Lat", "LC0", "WRBFU_group")]
+LUCAS_geodata_WRB_train_rf_full_LC_CEC<-LUCAS_geodata_WRB_train[,c("coarse", "clay", "silt", "sand", "pHinCaCl2", "OC", "CaCO3", "Country", "Long", "Lat", "LC0", "CEC")]
+LUCAS_geodata_WRB_valid_rf_full_LC_CEC<-LUCAS_geodata_WRB_valid[,c("coarse", "clay", "silt", "sand", "pHinCaCl2", "OC", "CaCO3",  "Country", "Long", "Lat", "LC0", "CEC")]
 
 #constraining all the data frames to the same classes
 type_list<-rep(NA, 11)
@@ -703,21 +903,30 @@ for (i in seq_along(type_list)) {
     LUCAS_geodata_WRB_valid_rf_full_LC[, i] <- as.character(LUCAS_geodata_WRB_valid_rf_full_LC[, i])
     LUCAS_geodata_WRB_train_rf_WRB[, i] <- as.character(LUCAS_geodata_WRB_train_rf_WRB[, i])
     LUCAS_geodata_WRB_valid_rf_WRB[, i] <- as.character(LUCAS_geodata_WRB_valid_rf_WRB[, i])
+    LUCAS_geodata_WRB_train_rf_full_LC_CEC[, i] <- as.character(LUCAS_geodata_WRB_train_rf_full_LC_CEC[, i])
+    LUCAS_geodata_WRB_valid_rf_full_LC_CEC[, i] <- as.character(LUCAS_geodata_WRB_valid_rf_full_LC_CEC[, i])
   } else if (type_list[i] == "numeric") {
     LUCAS_geodata_WRB_train_rf_full_LC[, i] <- as.numeric(LUCAS_geodata_WRB_train_rf_full_LC[, i])
     LUCAS_geodata_WRB_valid_rf_full_LC[, i] <- as.numeric(LUCAS_geodata_WRB_valid_rf_full_LC[, i])
     LUCAS_geodata_WRB_train_rf_WRB[, i] <- as.numeric(LUCAS_geodata_WRB_train_rf_WRB[, i])
     LUCAS_geodata_WRB_valid_rf_WRB[, i] <- as.numeric(LUCAS_geodata_WRB_valid_rf_WRB[, i])
+    LUCAS_geodata_WRB_train_rf_full_LC_CEC[, i] <- as.numeric(LUCAS_geodata_WRB_train_rf_full_LC_CEC[, i])
+    LUCAS_geodata_WRB_valid_rf_full_LC_CEC[, i] <- as.numeric(LUCAS_geodata_WRB_valid_rf_full_LC_CEC[, i])
   } else if (type_list[i] == "factor") {
     LUCAS_geodata_WRB_train_rf_full_LC[, i] <- as.factor(LUCAS_geodata_WRB_train_rf_full_LC[, i])
     LUCAS_geodata_WRB_valid_rf_full_LC[, i] <- as.factor(LUCAS_geodata_WRB_valid_rf_full_LC[, i])
     LUCAS_geodata_WRB_train_rf_WRB[, i] <- as.factor(LUCAS_geodata_WRB_train_rf_WRB[, i])
     LUCAS_geodata_WRB_valid_rf_WRB[, i] <- as.factor(LUCAS_geodata_WRB_valid_rf_WRB[, i])
+    LUCAS_geodata_WRB_train_rf_full_LC_CEC[, i] <- as.factor(LUCAS_geodata_WRB_train_rf_full_LC_CEC[, i])
+    LUCAS_geodata_WRB_valid_rf_full_LC_CEC[, i] <- as.factor(LUCAS_geodata_WRB_valid_rf_full_LC_CEC[, i])
   }
-  # Add more conditions for other types if necessary
 }
 
 
+#check that the data types are correct
+str(LUCAS_geodata_WRB_train_rf_full_LC)
+str(LUCAS_geodata_WRB_valid_rf_WRB)
+str(LUCAS_geodata_WRB_valid_rf_full_LC_CEC)
 
 #training the RF model
 
@@ -756,6 +965,18 @@ rf.WRB <- train(OC~.,
 end<-Sys.time()
 rf.WRB.time<- end - start
 
+
+#fitting the CEC RF model
+start<-Sys.time()
+rf.CEC <- train(OC~.,
+                data=LUCAS_geodata_WRB_train_rf_full_LC_CEC,
+                method='parRF', #cforest, #RRF
+                tuneGrid=tunegrid,
+                trControl=control, 
+                importance=T, allowParallel = T)
+end<-Sys.time()
+rf.CEC.time<- end - start
+
 rf.full_LC
 rf.WRB
 
@@ -768,29 +989,20 @@ LUCAS_geodata_WRB_valid_rf_WRB<-LUCAS_geodata_WRB_valid_rf_WRB[LUCAS_geodata_WRB
 residuals.full_LC=abs(predict(rf.full_LC, newdata = LUCAS_geodata_WRB_valid_rf_full_LC)  - LUCAS_geodata_WRB_valid_rf_full_LC$OC)
 residuals.WRB=abs(predict(rf.WRB, newdata = LUCAS_geodata_WRB_valid_rf_WRB)  - LUCAS_geodata_WRB_valid_rf_WRB$OC)
 
-# palette (colorblind) for plotting the extended land cover classes
-palette_LC0=rep(NA, 11)
-palette_LC0[1:2] = palette_okabe_ito(seq(1:2))
-palette_LC0[3] = palette_okabe_ito(4)
-palette_LC0[4] = palette_okabe_ito(3)
-palette_LC0[5] = palette_okabe_ito(3)
-palette_LC0[6] = palette_okabe_ito(3)
-palette_LC0[7:11] = palette_okabe_ito(seq(4:8))
-
 rf.full_LC.fit<-summary(lm(predict(rf.full_LC, newdata = LUCAS_geodata_WRB_valid_rf_full_LC) ~ LUCAS_geodata_WRB_valid_rf_full_LC$OC))
 rf.full_WRB.fit<-summary(lm(predict(rf.WRB, newdata = LUCAS_geodata_WRB_valid_rf_WRB) ~ LUCAS_geodata_WRB_valid_rf_WRB$OC))
+rf.full_CEC.fit<-summary(lm(predict(rf.CEC, newdata = LUCAS_geodata_WRB_valid_rf_full_LC_CEC) ~ LUCAS_geodata_WRB_valid_rf_full_LC_CEC$OC))
 
 
-png("./Appendix/RF_model_validation.png", width=2200, height=4200, res=300)
-par(mfrow=c(2,1))
+png("./Appendix/RF_model_validation.png", width=2200, height=5200, res=340)
+par(mfrow=c(3,1))
 
 plot(predict(rf.full_LC, newdata = LUCAS_geodata_WRB_valid_rf_full_LC), LUCAS_geodata_WRB_valid_rf_full_LC$OC, 
      pch=as.numeric(LUCAS_geodata_WRB_valid_rf_full_LC$LC0), col=palette_LC0[as.numeric(LUCAS_geodata_WRB_valid_rf_full_LC$LC0)],
      ylab="Predicted OC (g kg-1)", xlab="Measured OC (g kg-1)", main="Land cover ", ylim=c(0,200), xlim=c(0,200))
-legend("bottomright", levels(LUCAS_geodata_WRB_valid_rf_full_LC$LC0), pch=seq(1:9), col=palette_LC0)
-r2 = bquote(italic(R)^2 == .(format(round(rf.full_LC.fit$r.squared,2), digits = 3)))
+legend("bottomright", levels(LUCAS_geodata_WRB_valid_rf_full_LC$LC0), pch=seq(1:13), col=palette_LC0)
+r2 = bquote(italic(R)^2 == .(format(round(rf.full_LC.fit$r.squared,3), digits = 3)))
 text(x = 13, y = 200, labels = r2)
-     
 abline(0,1, lty=2)
 
 
@@ -799,10 +1011,21 @@ plot(predict(rf.WRB, newdata = LUCAS_geodata_WRB_valid_rf_WRB), LUCAS_geodata_WR
      ylab="Predicted OC (g kg-1)", xlab="Measured OC (g kg-1)", main="Land cover + WRB ",  ylim=c(0,200), xlim=c(0,200))
 #legend("bottomright", levels(LUCAS_geodata_WRB_valid_rf_WRB$LC0), pch=seq(1:9), col=LUC_palette_red)
 abline(0,1, lty=2)
-r2 = bquote(italic(R)^2 == .(format(round(rf.full_WRB.fit$r.squared,2), digits = 3)))
+r2 = bquote(italic(R)^2 == .(format(round(rf.full_WRB.fit$r.squared,3), digits = 3)))
+text(x = 13, y = 200, labels = r2)
+
+plot(predict(rf.CEC, newdata = LUCAS_geodata_WRB_valid_rf_full_LC_CEC), LUCAS_geodata_WRB_valid_rf_full_LC_CEC$OC, 
+     pch=as.numeric(LUCAS_geodata_WRB_valid_rf_full_LC$LC0), col=palette_LC0[as.numeric(LUCAS_geodata_WRB_valid_rf_full_LC$LC0)],
+     ylab="Predicted OC (g kg-1)", xlab="Measured OC (g kg-1)", main="Land cover + CEC ", ylim=c(0,200), xlim=c(0,200))
+abline(0,1, lty=2)
+r2 = bquote(italic(R)^2 == .(format(round(rf.full_CEC.fit$r.squared,3), digits = 3)))
 text(x = 13, y = 200, labels = r2)
 
 dev.off()
+
+
+boxplot(residuals.full_LC ~ LUCAS_geodata_WRB_valid_rf_full_LC$LC0, las=2)
+
 
 
 
@@ -814,14 +1037,53 @@ importance.WRB<-varImp(rf.WRB,
                                 sort=T,
                                 main="Variable Importance Plot")
 
-write.csv(importance.WRB$importance, file="./Appendix/varimp.csv")
+importance.CEC<-varImp(rf.CEC,
+                       sort=T,
+                       main="Variable Importance Plot")
 
-png("./Appendix/random_forest_reduced_importance.png", height=2000, width = 2000, res=300)
+
+imp_LC_df<-data.frame(names=rownames(importance.full_LC$importance), imp=importance.full_LC$importance, rank=rank(-importance.full_LC$importance$Overall))
+imp_WRB_df<-data.frame(names=rownames(importance.WRB$importance), imp=importance.WRB$importance, rank=rank(-importance.WRB$importance$Overall))
+imp_CEC_df<-data.frame(names=rownames(importance.CEC$importance), imp=importance.CEC$importance, rank=rank(-importance.CEC$importance$Overall))
+
+
+imp_LC_df  <- imp_LC_df[rev(order(imp_LC_df$Overall)),][1:20,]
+imp_WRB_df <- imp_WRB_df[rev(order(imp_WRB_df$Overall)),][1:20,]
+imp_CEC_df <- imp_CEC_df[rev(order(imp_CEC_df$Overall)),][1:20,]
+
+
+all_names<-unique(c(imp_LC_df$names, imp_WRB_df$names, imp_CEC_df$names))
+
+
+# Create a new DataFrame with all_names and NAs where necessary
+filtered_df <- data.frame(names = all_names)
+
+# Merge imp_LC_df with filtered_df based on names and replace missing values with NA
+filtered_df_LC <- merge(filtered_df, imp_LC_df, all.x = TRUE)
+filtered_df_WRB <- merge(filtered_df, imp_WRB_df, all.x = TRUE)
+filtered_df_CEC <- merge(filtered_df, imp_CEC_df, all.x = TRUE)
+
+filtered_df_LC <- filtered_df_LC[order(filtered_df_LC$names),]
+filtered_df_WRB <- filtered_df_WRB[order(filtered_df_WRB$names),]
+filtered_df_CEC <- filtered_df_CEC[order(filtered_df_CEC$names),]
+
+RF_ranking<- data.frame(variable=filtered_df_LC$names, only_LC=filtered_df_LC$rank, WRB=filtered_df_WRB$rank, CEC=filtered_df_CEC$rank)
+
+write.csv(RF_ranking, file="./Appendix/varimp.csv")
+
+
+
+png("./Appendix/RF_model_importance_LC.png", width=2000, height=2300, res=300)
 plot(importance.full_LC)
 dev.off()
 
+png("./Appendix/RF_model_importance_WRB.png", width=2000, height=2300, res=300)
+plot(importance.WRB)
+dev.off()
 
-
+png("./Appendix/RF_model_importance_CEC.png", width=2000, height=2300, res=300)
+plot(importance.CEC)
+dev.off()
 
 
 #<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
