@@ -496,9 +496,20 @@ proportions_by_WRB <- prop.table(table_by_WRB, margin = 1)
 table_by_LC_NUTS <- table(df.WRB$NUTS, df.WRB$LC_simpl, below_threshold)
 proportions_by_LC_NUTS <- prop.table(table_by_LC_NUTS, margin = 1)
 
+
+# Create a table of counts by NUTS and Koppen and calculate proportions 
+table_by_LC_Koppen_NUTS_all <- table(df.WRB$Koppenclim, df.WRB$NUTS)
+proportions_by_LC_Koppen_NUTS_all <- round(prop.table(table_by_LC_Koppen_NUTS_all, margin = 1)*100,1)
+
+
 # Create a table of counts by land cover and Koppen and calculate proportions by NUTS
 table_by_LC_Koppen <- table(df.WRB$Koppenclim, df.WRB$LC_simpl, below_threshold)
 proportions_by_LC_Koppen <- prop.table(table_by_LC_Koppen, margin = 1)
+
+table_by_LC_Koppen_all <- table(df.WRB$Koppenclim, below_threshold)
+proportions_by_LC_Koppen_all <- round(prop.table(table_by_LC_Koppen_all, margin = 1)*100,1)
+
+
 
 # Create a table of counts by land use and calculate proportions
 table_by_LU <- table(df.WRB$LU, below_threshold)
@@ -508,6 +519,18 @@ proportions_by_LU <- prop.table(table_by_LU, margin = 1)
 table_by_LC <- table(df.WRB$LC, below_threshold)
 proportions_by_LC <- prop.table(table_by_LC, margin = 1)
 
+table_by_LC_simpl <- table(df.WRB$LC_simpl, below_threshold)
+proportions_by_LC_simpl <- prop.table(table_by_LC_simpl, margin = 1)
+
+table_by_LC_all <- table(df.WRB$LC)
+proportions_by_LC_all <- round(table_by_LC_all/sum(table_by_LC_all)*100,2)
+
+#forest proportion of total
+sum(proportions_by_LC_all[4:6])
+sum(proportions_by_LC_all[c(3,8)])
+
+
+write.csv(round(proportions_by_LC*100, 0), "./Appendix/proportions_by_LC.csv")
 
 # Sort prportions based on the number of negatives in descending order
 proportions_by_WRB <- proportions_by_WRB[order(proportions_by_WRB[,"TRUE"], decreasing = TRUE),]
@@ -648,6 +671,47 @@ dev.off()
 #load UNFCCC datasets
 load("../../../UNFCCC_data/UNFCCC.RData")
 
+year_list <- seq(from=2000, to=2020)
+
+
+CL_change<-CL[CL$Year %in% year_list, c("Country", "Year", "MineralSoilsNetChange")]
+GL_change<-GL[GL$Year %in% year_list, c("Country", "Year", "MineralSoilsNetChange(tC/ha)")]
+colnames(GL_change) <- colnames(CL_change)
+par(mfrow=c(2,2))
+plot(CL_change[CL_change$Country=="NLD",]$Year, CL_change[CL_change$Country=="NLD",]$MineralSoilsNetChange, type="l", ylab="MineralSoilsNetChange", xlab="year", main="NLD Cl")
+plot(CL_change[CL_change$Country=="EST",]$Year, CL_change[CL_change$Country=="EST",]$MineralSoilsNetChange, type="l", ylab="MineralSoilsNetChange", xlab="year", main="EST Cl")
+plot(CL_change[CL_change$Country=="JPN",]$Year, CL_change[CL_change$Country=="JPN",]$MineralSoilsNetChange, type="l", ylab="MineralSoilsNetChange", xlab="year", main="JPN Cl")
+plot(CL_change[CL_change$Country=="ROU",]$Year, CL_change[CL_change$Country=="ROU",]$MineralSoilsNetChange, type="l", ylab="MineralSoilsNetChange", xlab="year", main="ROU Cl")
+
+plot(GL_change[GL_change$Country=="NLD",]$Year, GL_change[GL_change$Country=="NLD",]$MineralSoilsNetChange, type="l", ylab="MineralSoilsNetChange", xlab="year", main="NLD Gl")
+
+
+aggregated_CL <- aggregate(. ~ Country, data = CL[CL$Year %in% year_list, c("Country","MineralSoilsNetChange")], FUN = mean)
+aggregated_GL <- aggregate(. ~ Country, data = GL[GL$Year %in% year_list, c("Country","MineralSoilsNetChange(tC/ha)")], FUN = mean)
+aggregated_FL <- aggregate(. ~ Country, data = FL[FL$Year %in% year_list, c("Country","MineralSoilsNetChange")], FUN = mean)
+
+colnames(aggregated_GL) <- colnames(aggregated_FL)
+
+# Merge the first two dataframes based on 'Country'
+merged_data <- merge(aggregated_CL, aggregated_GL, by = "Country")
+
+# Merge the resulting dataframe with the third dataframe based on 'Country'
+merged_data <- merge(merged_data, aggregated_FL, by = "Country")
+
+
+png("./Appendix/UNFCC_data.png", width = 2500, height=2000, res=300)
+# UNFCC <- data.frame(CL_agg$MinSoilNet, GL_agg$MinSoilNet, FL_agg$MinSoilNet)
+# barpl<-barplot(as.matrix(t(UNFCC)), beside=T, names.arg=CL_agg$Country, las=2, col=LUC_palette_red[c(2,4,3)])
+
+barpl<-barplot(as.matrix(t(merged_data[,2:4])), beside=T, names.arg=merged_data$Country, las=2, col=LUC_palette_red[c(2,4,3)])
+
+abline(v=barpl[1,]-1, lty=2, col="darkgrey")
+legend("topleft", c("Cropland", "Grassland", "Forest"), bty="n", fill=LUC_palette_red[c(2,4,3)])
+box()
+dev.off()
+
+
+
 nation_codes<-unique(LUCAS_geodata_2009_2012_WRB_merged$NUTS_0)
 nation_names<-unique(LUCAS_geodata_2009_2012_WRB_merged$Country)
 
@@ -658,14 +722,23 @@ colnames(sinksource)=substr(FL_agg$Country, 1,2)
 colnames(sinksource)[25]="SK"
 colnames(sinksource)[26]="SI"
 colnames(sinksource)[27]="SE"
-colnames(sinksource)[8]="ES"
 colnames(sinksource)[9]="EE"
+
+colnames(sinksource)[colnames(sinksource)=="GR"]="EL"
+colnames(sinksource)[colnames(sinksource)=="DN"]="DK"
+colnames(sinksource)[colnames(sinksource)=="IR"]="IE"
+colnames(sinksource)[colnames(sinksource)=="PO"]="PL"
+colnames(sinksource)[colnames(sinksource)=="PR"]="PT"
+colnames(sinksource)[colnames(sinksource)=="AU"]="AT"
+
+FL_agg$Country[!colnames(sinksource) %in% nation_codes]
 
 #FL_agg$Country==GL_agg$Country==CL_agg$Country
 rownames(sinksource)<-c("Cropland","Grassland","Woodland")
 sinksource[1,]<-CL_agg$MinSoilNet
 sinksource[2,]<-GL_agg$MinSoilNet
 sinksource[3,]<-FL_agg$MinSoilNet
+
 
 relative_nondegr_by_nation_prop=mat.or.vec(3, length(nation_codes))
 sinksource_processed=mat.or.vec(3, length(nation_codes))
@@ -676,23 +749,46 @@ for(i in 1:length(nation_codes)){
   
   #sink or source since 2010?
   if(nation %in% colnames(sinksource)){
-    if(is.na(sinksource[1,colnames(sinksource)==nation])){sinksource_processed[1,i]=NA} else if(sinksource[1,colnames(sinksource)==nation]<0){sinksource_processed[1,i]="-"} else {sinksource_processed[1,i]="+"}
-    if(is.na(sinksource[2,colnames(sinksource)==nation])){sinksource_processed[2,i]=NA} else if(sinksource[2,colnames(sinksource)==nation]<0){sinksource_processed[2,i]="-"} else {sinksource_processed[2,i]="+"}
-    if(is.na(sinksource[3,colnames(sinksource)==nation])){sinksource_processed[3,i]=NA} else if(sinksource[3,colnames(sinksource)==nation]<0){sinksource_processed[3,i]="-"} else {sinksource_processed[3,i]="+"}
-  }else{
+    
+    if(is.na(sinksource[1,colnames(sinksource)==nation])){sinksource_processed[1,i]=NA
+    } else if (sinksource[1,colnames(sinksource)==nation] < -0.05){sinksource_processed[1,i]="-"
+    } else if (sinksource[1,colnames(sinksource)==nation] >= -0.05 & sinksource[1,colnames(sinksource)==nation] <= 0.05){sinksource_processed[1,i]="x"
+    } else if (sinksource[1,colnames(sinksource)==nation] > 0.05){sinksource_processed[1,i]="+"}
+    
+    
+    if(is.na(sinksource[2,colnames(sinksource)==nation])){sinksource_processed[2,i]=NA
+    } else if (sinksource[2,colnames(sinksource)==nation] < -0.05){sinksource_processed[2,i]="-"
+    } else if (sinksource[2,colnames(sinksource)==nation] >= -0.05 & sinksource[2,colnames(sinksource)==nation] <= 0.05){sinksource_processed[2,i]="x"
+    } else if (sinksource[2,colnames(sinksource)==nation] > 0.05){sinksource_processed[2,i]="+"}
+    
+  
+    if(is.na(sinksource[3,colnames(sinksource)==nation])){sinksource_processed[3,i]=NA
+    } else if (sinksource[3,colnames(sinksource)==nation] < -0.05){sinksource_processed[3,i]="-"
+    } else if (sinksource[3,colnames(sinksource)==nation] >= -0.05 & sinksource[3,colnames(sinksource)==nation] <= 0.05){sinksource_processed[3,i]="x"
+    } else if (sinksource[3,colnames(sinksource)==nation] > 0.05){sinksource_processed[3,i]="+"}
+    
+  
+    }else{
+      
     sinksource_processed[1,i]<-NA
     sinksource_processed[2,i]<-NA
     sinksource_processed[3,i]<-NA
+    
   }
 }
 
 colnames(sinksource_processed)<-nation_names
 
+sinksource_processed[1,which((sinksource_processed[1,])=="-")]
+sinksource_processed[2,which((sinksource_processed[2,])=="-")]
+sinksource_processed[3,which((sinksource_processed[3,])=="-")]
+
+CL_sources <- names(sinksource_processed[1,which((sinksource_processed[1,])=="-")])
+CL_sources[order(CL_sources)]
+
 
 sinksource_processed <- rbind(sinksource_processed, rep(NA, dim(sinksource_processed)[2]))
 rownames(sinksource_processed)[4] = "Shrubland"
-
-
 
 
 #<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
@@ -761,43 +857,53 @@ dev.off()
   
 
 
-
-
 png("./Figures/Fig2_colorcoded.png", width = 3600, height=2000, res=350)
 
 nf <- layout( matrix(c(1,2), ncol=2), 
               widths=c(10,1.6))
 
 col_points=mat.or.vec(4, length(nation_codes))
-col_points[3,as.character(sinksource_processed[3,])=="+"]="darkorange"
-col_points[3,as.character(sinksource_processed[3,])=="-"]="cadetblue2"
-col_points[2,as.character(sinksource_processed[2,])=="+"]="darkorange"
-col_points[2,as.character(sinksource_processed[2,])=="-"]="cadetblue2"
-col_points[1,as.character(sinksource_processed[1,])=="+"]="darkorange"
-col_points[1,as.character(sinksource_processed[1,])=="-"]="cadetblue2"
+col_points[3,as.character(sinksource_processed[3,])=="+"]="cadetblue3"
+col_points[3,as.character(sinksource_processed[3,])=="-"]="darkorange"
+col_points[3,as.character(sinksource_processed[3,])=="x"]="lightpink"
+col_points[2,as.character(sinksource_processed[2,])=="+"]="cadetblue3"
+col_points[2,as.character(sinksource_processed[2,])=="-"]="darkorange"
+col_points[3,as.character(sinksource_processed[2,])=="x"]="lightpink"
+col_points[1,as.character(sinksource_processed[1,])=="+"]="cadetblue3"
+col_points[1,as.character(sinksource_processed[1,])=="-"]="darkorange"
+col_points[3,as.character(sinksource_processed[1,])=="x"]="lightpink"
+
 col_points<-as.data.frame(col_points)
 col_points[col_points==0] = "lightgray"
 col_points[4,] = "lightgray"
 colnames(col_points) <- nation_names
 
+color_names <- rownames(proportions_by_LC_NUTS[reorder[-c(1,2)],c(3,4,5,6),1])
+
+
+new_xlim <- c(4, 107)
+
 par(mar=c(7,4,1,0))
 reorder<-rev(order(rowSums(proportions_by_LC_NUTS[,,1])))
 barpl<-barplot(t(proportions_by_LC_NUTS[reorder[-c(1,2)],c(3,4,5,6),1])*100,  las=2,
-               col=prettyGraphs::add.alpha(unlist(col_points), 0.6), ylim=c(0,107), ylab="Healthy proportion of total points considered (%)", beside = T)
+               col=prettyGraphs::add.alpha(unlist(col_points[, color_names]), 0.6), ylim=c(0,90), ylab="Healthy proportion of total points considered (%)", 
+               beside = T, xlim = new_xlim)
 
-barpl<-barplot(t(proportions_by_LC_NUTS[reorder[-c(1,2)],c(3,4,5,6),1])*100,  las=2, density=c(30) , angle=c(0,45,135,90),
-               col="black", ylim=c(0,107), ylab="Healthy proportion of total points considered (%)", beside = T, add=T)
+barpl<-barplot(t(proportions_by_LC_NUTS[reorder[-c(1,2)],c(3,4,5,6),1])*100,  las=2, density=c(17) , angle=c(0,45,135,90),
+               col="black", ylim=c(0,90), ylab="Healthy proportion of total points considered (%)", 
+               beside = T, add=T, xlim = new_xlim)
 
-legend(1, 106, colnames(proportions_by_LC_NUTS[reorder,c(3,4,5,6),1]), 
+legend(1, 90, colnames(proportions_by_LC_NUTS[reorder,c(3,4,5,6),1]), 
        fill="lightgray", xpd=TRUE, ncol=4,
        pch=NA, bty="n", cex=1)
-legend(1, 106, colnames(proportions_by_LC_NUTS[reorder,c(3,4,5,6),1]), density=c(30) , angle=c(0,45,135, 90),
+legend(1, 90, colnames(proportions_by_LC_NUTS[reorder,c(3,4,5,6),1]), density=c(20) , angle=c(0,45,135, 90),
        fill="black", xpd=TRUE, ncol=4,
        pch=NA, bty="n", cex=1)
-legend(1,100, c("Sink (UNFCC data)", "Source (UNFCC data)"), fill=prettyGraphs::add.alpha(c("cadetblue2", "darkorange"), 0.6), xpd=TRUE, ncol=4,
+legend("topright", c("Sink (UNFCC data)", "Source (UNFCC data)",  expression(paste("Neutral, ±0.05 t ", ha^-1, " (UNFCC data)"))), fill=prettyGraphs::add.alpha(c("cadetblue2", "darkorange", "lightpink"), 0.6), 
+       xpd=TRUE, ncol=1,
        pch=NA, bty="n", cex=1)
 box()
-legend("topright", "(a)", bty="n", cex=0.85)
+legend(0, 85, "(a)", bty="n", cex=0.85)
 colnames(barpl) <- colnames(t(proportions_by_LC_NUTS[reorder[-c(1,2)],c(3,4,5,6),1]))
 
 #text(barpl, rep(c(4,3,4,4.5), 22) + t(proportions_by_LC_NUTS[reorder[-c(1,2)],c(3,4,5,6),1])*100, c("Cropland", "Forest", "Grassland", "Shrubland"), cex=0.55, srt = 90)
@@ -873,17 +979,40 @@ LUCAS_geodata_WRB_train<-LUCAS_geodata_WRB_rf[ind==1,]
 LUCAS_geodata_WRB_valid<-LUCAS_geodata_WRB_rf[ind==2,]
 
 
-# #two different attempts, with full LC classification and with just coarse classes
-# LUCAS_geodata_WRB_train_rf_full_LC<-LUCAS_geodata_WRB_train[,c("coarse", "clay", "silt", "sand", "pHinCaCl2", "OC", "CaCO3", "CEC", "Country", "Long", "Lat", "LC0")]
-# LUCAS_geodata_WRB_valid_rf_full_LC<-LUCAS_geodata_WRB_valid[,c("coarse", "clay", "silt", "sand", "pHinCaCl2", "OC", "CaCO3", "CEC", "Country", "Long", "Lat", "LC0")]
-# LUCAS_geodata_WRB_train_rf_WRB<-LUCAS_geodata_WRB_train[,c("coarse", "clay", "silt", "sand", "pHinCaCl2", "OC", "CaCO3", "CEC", "Country", "Long", "Lat", "LC0", "WRBFU_group")]
-# LUCAS_geodata_WRB_valid_rf_WRB<-LUCAS_geodata_WRB_valid[,c("coarse", "clay", "silt", "sand", "pHinCaCl2", "OC", "CaCO3", "CEC", "Country", "Long", "Lat", "LC0", "WRBFU_group")]
-# 
-# #constraining all the data frames to the same classes
-# type_list<-rep(NA, 11)
-# type_list[c(1:8,10,11)]<-"numeric"
-# type_list[c(9,12)]<-"factor"
 
+#correlation matrices
+str(LUCAS_geodata_WRB_rf)
+LUCAS_geodata_WRB_rf[,"coarse"] <- as.numeric(LUCAS_geodata_WRB_rf[,"coarse"])
+LUCAS_geodata_WRB_rf[,"silt"] <- as.numeric(LUCAS_geodata_WRB_rf[,"silt"])
+LUCAS_geodata_WRB_rf[,"sand"] <- as.numeric(LUCAS_geodata_WRB_rf[,"sand"])
+LUCAS_geodata_WRB_rf[,"CaCO3"] <- as.numeric(LUCAS_geodata_WRB_rf[,"CaCO3"])
+LUCAS_geodata_WRB_rf[,"N"] <- as.numeric(LUCAS_geodata_WRB_rf[,"N"])
+LUCAS_geodata_WRB_rf[,"P"] <- as.numeric(LUCAS_geodata_WRB_rf[,"P"])
+LUCAS_geodata_WRB_rf[,"K"] <- as.numeric(LUCAS_geodata_WRB_rf[,"K"])
+str(LUCAS_geodata_WRB_rf)
+
+
+# Function to check if columns are numeric¨
+is.numeric.mat <- function(mat) {
+  vector<-c()
+  for(i in 1:dim(mat)[2]){
+    x=mat[,i]
+     if (is.numeric(x)) {
+       vector[i] = TRUE
+     } else {
+       vector[i] = FALSE
+       }
+  }
+  
+  return(vector)
+}
+
+#correlation matrix
+corrmat <- round(cor(LUCAS_geodata_WRB_rf[,is.numeric.mat(LUCAS_geodata_WRB_rf)], method="pearson"),2)
+corrmat_OC<-abs(corrmat[,"OC"])
+corrmat[,"OC"][order(corrmat_OC)]
+
+#splitting the datasets
 LUCAS_geodata_WRB_train_rf_full_LC<-LUCAS_geodata_WRB_train[,c("coarse", "clay", "silt", "sand", "pHinCaCl2", "OC", "CaCO3", "Country", "Long", "Lat", "LC0")]
 LUCAS_geodata_WRB_valid_rf_full_LC<-LUCAS_geodata_WRB_valid[,c("coarse", "clay", "silt", "sand", "pHinCaCl2", "OC", "CaCO3",  "Country", "Long", "Lat", "LC0")]
 LUCAS_geodata_WRB_train_rf_WRB<-LUCAS_geodata_WRB_train[,c("coarse", "clay", "silt", "sand", "pHinCaCl2", "OC", "CaCO3", "Country", "Long", "Lat", "LC0", "WRBFU_group")]
