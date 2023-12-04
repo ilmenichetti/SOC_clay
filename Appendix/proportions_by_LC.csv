@@ -1,12 +1,12 @@
-"","Healthy","Degraded"
-"Orchards/Wineyards",30,70
+"","FALSE","TRUE"
+"Artificial",77,23
 "Bare land",30,70
 "Cropland",51,49
-"Water body",75,25
-"Artificial",77,23
-"Shrubland",81,19
-"Grassland",84,16
 "Forest (Broadleaves)",90,10
-"Wetland",96,4
-"Forest (Mixed)",98,2
 "Forest (Conifer)",98,2
+"Forest (Mixed)",98,2
+"Grassland",84,16
+"Orchards/Wineyards",30,70
+"Shrubland",81,19
+"Water body",75,25
+"Wetland",96,4

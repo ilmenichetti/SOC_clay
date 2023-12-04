@@ -1,26 +1,26 @@
 "","variable","only_LC","WRB","CEC"
-"1","CaCO3",7,6,9
+"1","CaCO3",9,9,8
 "2","CEC",NA,NA,1
-"3","clay",1,1,6
-"4","coarse",8,9,10
-"5","CountryFinland",19,20,17
-"6","CountryFrance",18,16,NA
-"7","CountryGreece",NA,NA,16
-"8","CountryItaly",NA,13,11
-"9","CountryPoland",11,NA,15
-"10","CountrySpain",12,15,14
-"11","CountrySweden",20,NA,19
-"12","CountryUnited Kingdom",17,17,13
-"13","Lat",4,3,4
-"14","LC0Cropland",3,4,5
-"15","LC0Forest (Broadleaves)",16,NA,NA
-"16","LC0Forest (Conifer)",15,14,20
-"17","LC0Forest (Mixed)",14,11,NA
-"18","LC0Grassland",10,10,12
-"19","LC0Orchards/Wineyards",13,12,18
-"20","Long",5,5,3
-"21","pHinCaCl2",2,2,2
-"22","sand",6,8,7
-"23","silt",9,7,8
-"24","WRBFU_groupLV",NA,19,NA
-"25","WRBFU_groupPZ",NA,18,NA
+"3","clay",2,1,3
+"4","coarse",8,10,10
+"5","CountryFinland",NA,NA,12
+"6","CountryFrance",NA,NA,16
+"7","CountryGermany",NA,NA,18
+"8","CountryItaly",13,20,13
+"9","CountryPoland",15,13,NA
+"10","CountrySpain",11,11,14
+"11","CountrySweden",16,15,NA
+"12","CountryUnited Kingdom",12,16,15
+"13","Lat",5,2,4
+"14","LC0Bare land",18,NA,NA
+"15","LC0Cropland",3,6,5
+"16","LC0Forest (Broadleaves)",20,17,NA
+"17","LC0Forest (Conifer)",17,19,17
+"18","LC0Forest (Mixed)",19,14,20
+"19","LC0Grassland",10,8,11
+"20","LC0Orchards/Wineyards",14,18,19
+"21","Long",4,4,6
+"22","pHinCaCl2",1,3,2
+"23","sand",7,7,9
+"24","silt",6,5,7
+"25","WRBFU_groupCM",NA,12,NA

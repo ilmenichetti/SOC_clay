@@ -229,6 +229,7 @@ code=c(
 #<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
 
 Koppen <- raster("../../../koppen_geiger_tif/1991_2020/koppen_geiger_0p01.tif")
+#downscaled_raster <- aggregate(Koppen, fact = 5, fun = mean)
 
 
 KoppenValue=extract(Koppen, LUCAS_geodata_2009_2012)
@@ -290,6 +291,14 @@ e <- as(extent( -25, 40, 36, 71), 'SpatialPolygons')
 crs(e) <- "+proj=longlat +datum=WGS84 +no_defs"
 Koppen_crop <- crop(Koppen, e)
 
+# 
+# # Filter the raster to keep only pixels with a value of 7
+# value_to_plot <- 7
+# filtered_raster <- Koppen_crop
+# filtered_raster[filtered_raster != value_to_plot] <- NA
+# 
+# # Plot the filtered raster using levelplot from rasterVis
+# rasterVis::levelplot(filtered_raster, margin = FALSE)
 
 
 #<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
@@ -301,6 +310,10 @@ worldmap <- getMap(resolution="low")
 
 LUCAS_geodata_2015_no_NA<-data.frame(LUCAS_geodata_2015[!is.na(LUCAS_geodata_2015$Clay),])
 LUCAS_geodata_2009_2012_no_NA<-data.frame(LUCAS_geodata_2009_2012[!is.na(LUCAS_geodata_2009_2012$clay),])
+
+which(LUCAS_geodata_2009_2012$Country == "Croatia")
+
+
 
 kde2d_est_2015 <- kde2d(x = LUCAS_geodata_2015_no_NA$coords.x1, y = LUCAS_geodata_2015_no_NA$coords.x2, h=4, n = 150, 
                         lims = c(range(LUCAS_geodata_2015_no_NA$coords.x1), range(LUCAS_geodata_2015_no_NA$coords.x2)))
@@ -331,6 +344,8 @@ plot(worldmap, add=TRUE, lwd=0.5)
 
 dev.off()
 
+which(LUCAS_geodata_2009_2012_no_NA$Country == "Croatia")
+
 
 
 #<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
@@ -342,6 +357,12 @@ dev.off()
 LUCAS_geodata_WRB<-cbind(LUCAS_geodata_2009_2012@data, WRBFU=as.factor(WRBFU), WRBFU_group=as.factor(WRBFU_group),
                          WRBFU_qual=as.factor(WRBFU_qual),
                          WRBFU_SMU_LV1=as.factor(WRBFU_SMU_LV1), LUCAS_geodata_2009_2012@coords, KoppenValue, KoppenClim)
+
+
+LUCAS_geodata_WRB[LUCAS_geodata_WRB$KoppenValue==7,]$coords.x2
+range(LUCAS_geodata_WRB[LUCAS_geodata_WRB$KoppenClim=="BSk, Steppe, cold"   ,]$coords.x2, na.rm=T)
+LUCAS_geodata_WRB[LUCAS_geodata_WRB$KoppenClim=="BSk, Steppe, hot"   ,]$coords.x2
+
 
 LUCAS_geodata_WRB<-na.omit(LUCAS_geodata_WRB)
 as.factor(LUCAS_geodata_WRB$Country)
@@ -411,6 +432,10 @@ calculate_mode <- function(x, method) {
 
 LUCAS_geodata_2009_2012_WRB_merged_filtered <- LUCAS_geodata_2009_2012_WRB_merged[LUCAS_geodata_2009_2012_WRB_merged$OC<200,]
 
+LUCAS_geodata_2009_2012_WRB_merged_filtered$OC<- as.numeric(LUCAS_geodata_2009_2012_WRB_merged_filtered$OC)
+LUCAS_geodata_2009_2012_WRB_merged_filtered$clay <- as.numeric(LUCAS_geodata_2009_2012_WRB_merged_filtered$clay)*10
+LUCAS_geodata_2009_2012_WRB_merged_filtered$LC0_simpl <- as.factor(LUCAS_geodata_2009_2012_WRB_merged_filtered$LC0_simpl
+                                                                   )
 png("./Appendix/OC_Clay_modes.png", width = 3000, height=5000, res=320)
 par(mfrow=c(2,1))
 #OC
@@ -418,7 +443,8 @@ means_OC <- tapply(LUCAS_geodata_2009_2012_WRB_merged_filtered$OC, LUCAS_geodata
 medians_OC <- tapply(LUCAS_geodata_2009_2012_WRB_merged_filtered$OC, LUCAS_geodata_2009_2012_WRB_merged_filtered$LC0_simpl, FUN = median)
 modes_OC <- c()
 
-plot(density( LUCAS_geodata_2009_2012_WRB_merged_filtered$OC), main = "SOC", xlab = "C (g kg-1)", 
+
+plot(density(LUCAS_geodata_2009_2012_WRB_merged_filtered$OC), main = "SOC", xlab = "C (g kg-1)", 
      xlim = range(LUCAS_geodata_2009_2012_WRB_merged_filtered$OC), col=NA, ylim=c(0,0.1))
 # Create density histograms and add vertical lines for modes
 for (i in 1:length(levels(LUCAS_geodata_2009_2012_WRB_merged_filtered$LC0_simpl))) {
@@ -454,7 +480,7 @@ for (i in 1:length(levels(LUCAS_geodata_2009_2012_WRB_merged_filtered$LC0_simpl)
 
 dev.off()
 
-write.csv(round(data.frame(means_OC, medians_OC, modes_OC, means_Clay, medians_Clay, modes_Clay),1), file="./Appendix/modes_medians.csv")
+write.csv(round(data.frame(means_OC, medians_OC, modes_OC, means_Clay, medians_Clay, modes_Clay),3), file="./Appendix/S2.csv")
 
 
 #<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
@@ -509,7 +535,10 @@ proportions_by_LC_Koppen <- prop.table(table_by_LC_Koppen, margin = 1)
 table_by_LC_Koppen_all <- table(df.WRB$Koppenclim, below_threshold)
 proportions_by_LC_Koppen_all <- round(prop.table(table_by_LC_Koppen_all, margin = 1)*100,1)
 
+table_by_Koppen_LUC <- table(df.WRB$Koppenclim, df.WRB$NUTS)
+proportions_by_LC_Koppen_LUC <- table_by_Koppen_LUC/sum(table_by_Koppen_LUC)
 
+table_by_Koppen_LUC[9,]/sum(table_by_Koppen_LUC[9,])
 
 # Create a table of counts by land use and calculate proportions
 table_by_LU <- table(df.WRB$LU, below_threshold)
@@ -525,6 +554,20 @@ proportions_by_LC_simpl <- prop.table(table_by_LC_simpl, margin = 1)
 table_by_LC_all <- table(df.WRB$LC)
 proportions_by_LC_all <- round(table_by_LC_all/sum(table_by_LC_all)*100,2)
 
+
+
+# writing the appendix tables
+write.csv(cbind(n=rowSums(table_by_LC_simpl), 
+                share=round(rowSums(table_by_LC_simpl)/sum(rowSums(table_by_LC_simpl))*100,3),
+                degraded=round((table_by_LC_simpl[,2]/rowSums(table_by_LC_simpl))*100,3)), "./Appendix/S1.csv")
+write.csv(round(proportions_by_LC,3), "./Appendix/S3.csv")
+write.csv(round(proportions_by_WRB,3), "./Appendix/S4.csv")
+
+
+proportions_by_LC*100
+
+
+
 #forest proportion of total
 sum(proportions_by_LC_all[4:6])
 sum(proportions_by_LC_all[c(3,8)])
@@ -537,6 +580,14 @@ proportions_by_WRB <- proportions_by_WRB[order(proportions_by_WRB[,"TRUE"], decr
 proportions_by_NUTS <- proportions_by_NUTS[order(proportions_by_NUTS[,"TRUE"], decreasing = TRUE),]
 proportions_by_LU <- proportions_by_LU[order(proportions_by_LU[,"TRUE"], decreasing = TRUE),]
 proportions_by_LC <- proportions_by_LC[order(proportions_by_LC[,"TRUE"], decreasing = TRUE),]
+
+
+range(proportions_by_NUTS[,2])*100
+mean(proportions_by_NUTS[,2])
+sum(table_by_NUTS[,2])/sum(table_by_NUTS)
+proportions_by_LC_simpl*100
+proportions_by_LC*100
+
 
 colnames(proportions_by_WRB)<- c("Healthy", "Degraded")
 colnames(proportions_by_NUTS)<- c("Healthy", "Degraded")
@@ -559,7 +610,6 @@ barpl<-barplot(t(proportions_by_WRB)*100, las=2, names.arg=denomination, col=c("
                ylim=c(0,100),  ylab="Proportion of total data points considered (%)", main="")
 box()
 dev.off()
-
 
 
 
@@ -656,7 +706,7 @@ dev.off()
 png("./Figures/Fig1.png", width=3400, height=1700, res=300)
 
 figure <- ggarrange(marginal_plot,density,
-                    labels = c("A", "B"),
+                    labels = c("a)", "b)"),
                     ncol = 2, nrow = 1)
 figure
 dev.off()
@@ -670,8 +720,20 @@ dev.off()
 
 #load UNFCCC datasets
 load("../../../UNFCCC_data/UNFCCC.RData")
+UNCFF_data_CL<-read.csv("../../../UNFCCC_data/losses_CL.csv")
+UNCFF_data_GL<-read.csv("../../../UNFCCC_data/losses_GL.csv")
+UNCFF_data_FL<-read.csv("../../../UNFCCC_data/losses_FL.csv")
+
+colnames(UNCFF_data_CL)
+UNCFF_data_CL$MineralSoilsNetChange.tC.ha. <- as.numeric(as.character(UNCFF_data_CL$MineralSoilsNetChange.tC.ha.))
+UNCFF_data_GL$MineralSoilsNetChange.tC.ha. <- as.numeric(as.character(UNCFF_data_GL$MineralSoilsNetChange.tC.ha.))
+UNCFF_data_FL$MineralSoilsNetChange.tC.ha. <- as.numeric(as.character(UNCFF_data_FL$MineralSoilsNetChange.tC.ha.))
+
+
 
 year_list <- seq(from=2000, to=2020)
+
+
 
 
 CL_change<-CL[CL$Year %in% year_list, c("Country", "Year", "MineralSoilsNetChange")]
@@ -686,9 +748,20 @@ plot(CL_change[CL_change$Country=="ROU",]$Year, CL_change[CL_change$Country=="RO
 plot(GL_change[GL_change$Country=="NLD",]$Year, GL_change[GL_change$Country=="NLD",]$MineralSoilsNetChange, type="l", ylab="MineralSoilsNetChange", xlab="year", main="NLD Gl")
 
 
-aggregated_CL <- aggregate(. ~ Country, data = CL[CL$Year %in% year_list, c("Country","MineralSoilsNetChange")], FUN = mean)
-aggregated_GL <- aggregate(. ~ Country, data = GL[GL$Year %in% year_list, c("Country","MineralSoilsNetChange(tC/ha)")], FUN = mean)
-aggregated_FL <- aggregate(. ~ Country, data = FL[FL$Year %in% year_list, c("Country","MineralSoilsNetChange")], FUN = mean)
+# aggregated_CL <- aggregate(. ~ Country, data = CL[CL$Year %in% year_list, c("Country","MineralSoilsNetChange")], FUN = mean)
+# aggregated_GL <- aggregate(. ~ Country, data = GL[GL$Year %in% year_list, c("Country","MineralSoilsNetChange(tC/ha)")], FUN = mean)
+# aggregated_FL <- aggregate(. ~ Country, data = FL[FL$Year %in% year_list, c("Country","MineralSoilsNetChange")], FUN = mean)
+
+colnames(UNCFF_data_CL)[1] = "Country"
+colnames(UNCFF_data_GL)[1] = "Country"
+colnames(UNCFF_data_FL)[1] = "Country"
+aggregated_CL <- aggregate(. ~ Country, data = UNCFF_data_CL[UNCFF_data_CL$Year %in% year_list, c("Country","MineralSoilsNetChange.tC.ha.")], FUN = mean, na.rm=T)
+aggregated_GL <- aggregate(. ~ Country, data = UNCFF_data_GL[UNCFF_data_GL$Year %in% year_list, c("Country","MineralSoilsNetChange.tC.ha.")], FUN = mean)
+aggregated_FL <- aggregate(. ~ Country, data = UNCFF_data_FL[UNCFF_data_FL$Year %in% year_list, c("Country","MineralSoilsNetChange.tC.ha.")], FUN = mean)
+
+
+unique(UNCFF_data_CL$Country)
+
 
 colnames(aggregated_GL) <- colnames(aggregated_FL)
 
@@ -716,13 +789,20 @@ nation_codes<-unique(LUCAS_geodata_2009_2012_WRB_merged$NUTS_0)
 nation_names<-unique(LUCAS_geodata_2009_2012_WRB_merged$Country)
 
 
-sinksource<-mat.or.vec(3,28)
 
-colnames(sinksource)=substr(FL_agg$Country, 1,2)
+merged_UNFCCC <- merge(aggregated_CL, aggregated_FL, by="Country", all=T)
+merged_UNFCCC <- merge(merged_UNFCCC, aggregated_GL, by="Country", all=T)
+names(merged_UNFCCC)<-c("Country", "CL", "FL", "GL")
+
+sinksource<-mat.or.vec(3,29)
+
+colnames(sinksource)=substr(merged_UNFCCC$Country, 1,2)
+aggregated_FL$Country[9]
 colnames(sinksource)[25]="SK"
 colnames(sinksource)[26]="SI"
 colnames(sinksource)[27]="SE"
 colnames(sinksource)[9]="EE"
+
 
 colnames(sinksource)[colnames(sinksource)=="GR"]="EL"
 colnames(sinksource)[colnames(sinksource)=="DN"]="DK"
@@ -730,14 +810,24 @@ colnames(sinksource)[colnames(sinksource)=="IR"]="IE"
 colnames(sinksource)[colnames(sinksource)=="PO"]="PL"
 colnames(sinksource)[colnames(sinksource)=="PR"]="PT"
 colnames(sinksource)[colnames(sinksource)=="AU"]="AT"
+colnames(sinksource)[colnames(sinksource)=="GB"]="UK"
 
-FL_agg$Country[!colnames(sinksource) %in% nation_codes]
+aggregated_FL$Country[!colnames(sinksource) %in% nation_codes]
+
+
+sinksource[,"UK"]
+merged_UNFCCC[merged_UNFCCC$Country=="GBR",]
+aggregated_CL[aggregated_CL$Country=="GBR",]
+aggregated_FL[aggregated_FL$Country=="GBR",]
+aggregated_GL[aggregated_GL$Country=="GBR",]
 
 #FL_agg$Country==GL_agg$Country==CL_agg$Country
-rownames(sinksource)<-c("Cropland","Grassland","Woodland")
-sinksource[1,]<-CL_agg$MinSoilNet
-sinksource[2,]<-GL_agg$MinSoilNet
-sinksource[3,]<-FL_agg$MinSoilNet
+rownames(sinksource)<-c("Cropland","Forest","Grassland")
+
+
+sinksource[1,]<-merged_UNFCCC$CL
+sinksource[2,]<-merged_UNFCCC$FL
+sinksource[3,]<-merged_UNFCCC$GL
 
 
 relative_nondegr_by_nation_prop=mat.or.vec(3, length(nation_codes))
@@ -786,9 +876,11 @@ sinksource_processed[3,which((sinksource_processed[3,])=="-")]
 CL_sources <- names(sinksource_processed[1,which((sinksource_processed[1,])=="-")])
 CL_sources[order(CL_sources)]
 
+write.csv(sinksource, "./Appendix/sinksource.csv")
 
-sinksource_processed <- rbind(sinksource_processed, rep(NA, dim(sinksource_processed)[2]))
-rownames(sinksource_processed)[4] = "Shrubland"
+
+# sinksource_processed <- rbind(sinksource_processed, rep(NA, dim(sinksource_processed)[2]))
+# rownames(sinksource_processed)[4] = "Shrubland"
 
 
 #<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
@@ -862,61 +954,61 @@ png("./Figures/Fig2_colorcoded.png", width = 3600, height=2000, res=350)
 nf <- layout( matrix(c(1,2), ncol=2), 
               widths=c(10,1.6))
 
-col_points=mat.or.vec(4, length(nation_codes))
-col_points[3,as.character(sinksource_processed[3,])=="+"]="cadetblue3"
-col_points[3,as.character(sinksource_processed[3,])=="-"]="darkorange"
-col_points[3,as.character(sinksource_processed[3,])=="x"]="lightpink"
-col_points[2,as.character(sinksource_processed[2,])=="+"]="cadetblue3"
-col_points[2,as.character(sinksource_processed[2,])=="-"]="darkorange"
-col_points[3,as.character(sinksource_processed[2,])=="x"]="lightpink"
-col_points[1,as.character(sinksource_processed[1,])=="+"]="cadetblue3"
-col_points[1,as.character(sinksource_processed[1,])=="-"]="darkorange"
-col_points[3,as.character(sinksource_processed[1,])=="x"]="lightpink"
+col_points=mat.or.vec(3, length(nation_codes))
+col_points[3,as.character(sinksource_processed[3,])=="+"]="#56B4E9"
+col_points[3,as.character(sinksource_processed[3,])=="-"]="#E69F00"
+col_points[3,as.character(sinksource_processed[3,])=="x"]="#CC79A7"
+col_points[2,as.character(sinksource_processed[2,])=="+"]="#56B4E9"
+col_points[2,as.character(sinksource_processed[2,])=="-"]="#E69F00"
+col_points[2,as.character(sinksource_processed[2,])=="x"]="#CC79A7"
+col_points[1,as.character(sinksource_processed[1,])=="+"]="#56B4E9"
+col_points[1,as.character(sinksource_processed[1,])=="-"]="#E69F00"
+col_points[1,as.character(sinksource_processed[1,])=="x"]="#CC79A7"
 
 col_points<-as.data.frame(col_points)
 col_points[col_points==0] = "lightgray"
-col_points[4,] = "lightgray"
 colnames(col_points) <- nation_names
 
 color_names <- rownames(proportions_by_LC_NUTS[reorder[-c(1,2)],c(3,4,5,6),1])
 
 
-new_xlim <- c(4, 107)
+new_xlim <- c(4, 85)
 
 par(mar=c(7,4,1,0))
 reorder<-rev(order(rowSums(proportions_by_LC_NUTS[,,1])))
-barpl<-barplot(t(proportions_by_LC_NUTS[reorder[-c(1,2)],c(3,4,5,6),1])*100,  las=2,
+barpl<-barplot(t(proportions_by_LC_NUTS[reorder[-c(1,2)],c(3,4,5),1])*100,  las=2,
                col=prettyGraphs::add.alpha(unlist(col_points[, color_names]), 0.6), ylim=c(0,90), ylab="Healthy proportion of total points considered (%)", 
                beside = T, xlim = new_xlim)
 
-barpl<-barplot(t(proportions_by_LC_NUTS[reorder[-c(1,2)],c(3,4,5,6),1])*100,  las=2, density=c(17) , angle=c(0,45,135,90),
+barpl<-barplot(t(proportions_by_LC_NUTS[reorder[-c(1,2)],c(3,4,5),1])*100,  las=2, density=c(17) , angle=c(0,45,135),
                col="black", ylim=c(0,90), ylab="Healthy proportion of total points considered (%)", 
                beside = T, add=T, xlim = new_xlim)
 
-legend(1, 90, colnames(proportions_by_LC_NUTS[reorder,c(3,4,5,6),1]), 
+legend(1, 90, colnames(proportions_by_LC_NUTS[reorder,c(3,4,5),1]), 
        fill="lightgray", xpd=TRUE, ncol=4,
        pch=NA, bty="n", cex=1)
-legend(1, 90, colnames(proportions_by_LC_NUTS[reorder,c(3,4,5,6),1]), density=c(20) , angle=c(0,45,135, 90),
+legend(1, 90, colnames(proportions_by_LC_NUTS[reorder,c(3,4,5),1]), density=c(20) , angle=c(0,45,135),
        fill="black", xpd=TRUE, ncol=4,
        pch=NA, bty="n", cex=1)
-legend("topright", c("Sink (UNFCC data)", "Source (UNFCC data)",  expression(paste("Neutral, ±0.05 t ", ha^-1, " (UNFCC data)"))), fill=prettyGraphs::add.alpha(c("cadetblue2", "darkorange", "lightpink"), 0.6), 
+legend("topright", c("Sink (UNFCCC data)", "Source (UNFCCC data)",  expression(paste("Neutral, ±0.05 t ", ha^-1, " (UNFCCC data)"))),
+       fill=prettyGraphs::add.alpha(c("#56B4E9", "#E69F00", "#CC79A7"), 0.6), 
        xpd=TRUE, ncol=1,
        pch=NA, bty="n", cex=1)
 box()
 legend(0, 85, "(a)", bty="n", cex=0.85)
-colnames(barpl) <- colnames(t(proportions_by_LC_NUTS[reorder[-c(1,2)],c(3,4,5,6),1]))
+colnames(barpl) <- colnames(t(proportions_by_LC_NUTS[reorder[-c(1,2)],c(3,4,5),1]))
 
 #text(barpl, rep(c(4,3,4,4.5), 22) + t(proportions_by_LC_NUTS[reorder[-c(1,2)],c(3,4,5,6),1])*100, c("Cropland", "Forest", "Grassland", "Shrubland"), cex=0.55, srt = 90)
 #text(barpl, -2, c("Cr.", "Fo.", "Gr.", "Sh."), cex=0.52,  xpd = NA, srt = 90)
-text(barpl, -2, c("C", "F", "G", "S"), cex=0.6,  xpd = NA)
+text(barpl, -2, c("C", "F", "G"), cex=0.6,  xpd = NA)
 
 par(mar=c(7,0,1,1))
 reorder2<-(order(proportions_by_NUTS[,2]))
 barpl<-barplot(t(proportions_by_NUTS[reorder2[-c(1,2)],])*100, las=2,  col=c("lightgreen", "tomato1"),
-               # legend.text = TRUE, 
-               # args.legend = list(x = "topright",
-               #                    inset = c(0.35, -0.17)),
                xlim=c(0,100), ylim=c(0,27), ylab="", main="", horiz=T, yaxt="n", xlab=" heal./degr.  (%)")
+barplot(t(proportions_by_NUTS[reorder2[-c(1,2)],])*100, las=2,  col=c("lightgreen", "tomato4"), density=20,
+               xlim=c(0,100), ylim=c(0,27), ylab="", main="", horiz=T, yaxt="n", xlab=" heal./degr.  (%)", add=T)
+
 text(-5 , barpl-0.07, rownames(proportions_by_NUTS[reorder2[-c(1,2)],]), cex=0.6,  pos = 4)
 box()
 legend("topright", "(b)", bty="n", cex=0.85)
@@ -958,6 +1050,119 @@ legend("topright", colnames(proportions_by_LC_Koppen[which_to_plot,c(2,3,4,5,6),
 box()
 text(barpl, colSums(t(proportions_by_LC_Koppen[which_to_plot,c(2,3,4,5,6),1])*100)+3, clim_codes, cex=0.9)
 
+dev.off()
+
+
+png("./Figures/Fig_3_alt.png", width=2000, height=1700, res=300)
+# par(mfrow=c(1,2))
+par(mar=c(4,1,1,1))
+proportions_by_LC_Koppen_all_plot<-proportions_by_LC_Koppen_all[rev(order(proportions_by_LC_Koppen_all[,1])),][c(-1,-2),]
+barpl <- barplot(t(proportions_by_LC_Koppen_all_plot),col=c("lightgreen", "tomato1"), yaxt="n",
+        xlim=c(0,100), ylab="", main="", horiz=T,  xlab="Healthy/Degraded  (%)", names.arg=rownames(proportions_by_LC_Koppen_all_plot))
+box()
+barplot(t(proportions_by_LC_Koppen_all_plot),  col=c("lightgreen", "tomato4"), density=20,
+        xlim=c(0,100), ylim=c(0,27), ylab="", main="", horiz=T, yaxt="n", xlab="Healthy/Degraded  (%)", add=T)
+text(2 , barpl-0.07, rownames(proportions_by_LC_Koppen_all_plot), cex=1,  pos = 4)
+#legend("bottomright", "(a)", bty="n", cex=0.85)
+dev.off()
+
+
+
+#load the barplot density function
+source("barplot_density_function.R")
+
+
+png("./Figures/Fig_3_alt_longlat.png", width=2500, height=1500, res=320)
+
+nf <- layout( matrix(c(1,2,3), ncol=3), 
+              widths=c(9,4,4))
+layout.show(n=3)
+
+koppen_palette <- rev(c("#D5BB21FF", 
+                    "#F8B620FF", 
+                    "#F89217FF", 
+                    "#F06719FF", 
+                    "#FC719EFF", 
+                    "#F64971FF", 
+                    "#A2B627FF", 
+                    "#CE69BEFF", 
+                    "#7873C0FF",
+                    "#57A337FF", 
+                    "#21B087FF"))
+
+element_colors <- matrix(koppen_palette, nrow = length(koppen_palette), byrow = TRUE)
+
+par(mar=c(4,1,1,0))
+elements <- length(t(proportions_by_LC_Koppen_all_plot)[1,])
+#proportions_by_LC_Koppen_all_plot<-proportions_by_LC_Koppen_all[rev(order(proportions_by_LC_Koppen_all[,1])),][c(-1,-2),]
+proportions_by_LC_Koppen_all_plot<-proportions_by_LC_Koppen_all[(order(proportions_by_LC_Koppen_all[,1])),][c(-12,-13),] #### careful here, removing Tundra and dsb
+
+barpl<-barplot(rep(100, elements), col="tomato1", yaxt="n", xaxt="n", #col=darken_colors(koppen_palette, 0.45), yaxt="n", xaxt="n",
+                 xlim=c(0,100), ylab="", main="", horiz=T,  xlab="Healthy/Degraded  (%)", names.arg=rownames(proportions_by_LC_Koppen_all_plot))
+barplot(rep(100, elements), col="tomato4", density=20, yaxt="n", xaxt="n", #col=darken_colors(koppen_palette, 0.45), yaxt="n", xaxt="n",
+        xlim=c(0,100), ylab="", main="", horiz=T,  xlab="Healthy/Degraded  (%)", names.arg=rownames(proportions_by_LC_Koppen_all_plot), add=T)
+barplot(t(proportions_by_LC_Koppen_all_plot)[1,],  col="lightgreen", xaxt="n", # col=lighten_colors(koppen_palette, 0.2),  xaxt="n",
+        xlim=c(0,100), ylim=c(0,27), ylab="", main="", horiz=T, yaxt="n", xlab="Healthy/Degraded  (%)", add=T)
+
+tick_positions <- seq(0,100, by = 25)  # Adjust by = value as needed
+axis(side = 1, at = tick_positions[-length(tick_positions)], labels = tick_positions[-length(tick_positions)])
+box()
+text(2 , barpl-0.07, rownames(proportions_by_LC_Koppen_all_plot), cex=1,  pos = 4, col="black", font=2)
+legend("bottomleft", "a)", bty="n", cex=0.85)
+
+proportions_by_LC_Koppen_all_plot2<-proportions_by_LC_Koppen_all[rev(order(proportions_by_LC_Koppen_all[,1])),][c(-1,-2),] #### careful here, removing Tundra and dsb
+
+
+#LATITUDE
+par(mar=c(4,0,1,0))
+#build the df to plot, latitude
+lat_df <- data.frame(LUCAS_geodata_WRB$KoppenClim, LUCAS_geodata_WRB$coords.x2)
+# Filter the dataframe based on the subset of levels in 'Category' column
+filtered_lat_df <- lat_df[lat_df$LUCAS_geodata_WRB.KoppenClim %in% rownames(proportions_by_LC_Koppen_all_plot2), ]
+filtered_lat_df$LUCAS_geodata_WRB.KoppenClim <- droplevels(filtered_lat_df$LUCAS_geodata_WRB.KoppenClim)
+# Order of the elements in the first vector
+order_plot <- match(rev(rownames(proportions_by_LC_Koppen_all_plot2)), levels(filtered_lat_df$LUCAS_geodata_WRB.KoppenClim))
+#order_plot <- match( levels(filtered_lat_df$LUCAS_geodata_WRB.KoppenClim), rownames(proportions_by_LC_Koppen_all_plot2))
+#barplot_density(df=filtered_lat_df, colors=koppen_palette, xlabel="Latitude", yaxt="n", order_vec = order_plot)
+barplot_density(df=filtered_lat_df, colors=rep("cadetblue4",13), xlabel="Latitude", yaxt="n", order_vec = order_plot)
+legend("bottomleft", "b)", bty="n", cex=0.85)
+
+#LONGITUDE
+par(mar=c(4,0,1,0))
+#build the df to plot, longitude
+long_df <- data.frame(LUCAS_geodata_WRB$KoppenClim, LUCAS_geodata_WRB$coords.x1)
+# Filter the dataframe based on the subset of levels in 'Category' column
+filtered_long_df <- long_df[long_df$LUCAS_geodata_WRB.KoppenClim %in% rownames(proportions_by_LC_Koppen_all_plot2), ]
+filtered_long_df$LUCAS_geodata_WRB.KoppenClim <- droplevels(filtered_long_df$LUCAS_geodata_WRB.KoppenClim)
+# Order of the elements in the first vector
+order_plot <- match(rev(rownames(proportions_by_LC_Koppen_all_plot2)), levels(filtered_long_df$LUCAS_geodata_WRB.KoppenClim))
+#barplot_density(df=filtered_long_df, colors=koppen_palette, xlabel="Longitude", yaxt="n", order_vec = order_plot)
+barplot_density(df=filtered_long_df, colors=rep("darkorange3",13), xlabel="Longitude", yaxt="n", order_vec = order_plot)
+legend("bottomleft", "c)", bty="n", cex=0.85)
+
+dev.off()
+
+range(LUCAS_geodata_WRB[LUCAS_geodata_WRB$KoppenClim=="BSk, Steppe, cold",]$coords.x2)
+range(filtered_lat_df[filtered_lat_df$LUCAS_geodata_WRB.KoppenClim=="BSk, Steppe, cold",]$LUCAS_geodata_WRB.coords.x2)
+
+
+
+
+
+png("./Appendix/Fig_3_1.png", width=2000, height=1700, res=300)
+par(mar=c(4,1,1,1))
+
+proportions_by_LC_plot<-proportions_by_LC[rowSums(table_by_LC)>100,]
+proportions_by_LC_plot<-proportions_by_LC_plot[rev(order(proportions_by_LC_plot[,1])),]
+rownames(proportions_by_LC_plot)[rownames(proportions_by_LC_plot)=="Orchards/Wineyards"]="Permanent cropland"
+barpl <- barplot(t(proportions_by_LC_plot)*100,col=c("lightgreen", "tomato1"), yaxt="n",
+                 xlim=c(0,100), ylab="", main="", horiz=T,  xlab="Healthy/Degraded  (%)")
+box()
+barplot(t(proportions_by_LC_plot)*100,  col=c("lightgreen", "tomato4"), density=20,
+        xlim=c(0,100), ylim=c(0,27), ylab="", main="", horiz=T, yaxt="n", xlab="Healthy/Degraded  (%)", add=T)
+text(2 , barpl-0.07, rownames(proportions_by_LC_plot), cex=1,  pos = 4)
+
+box()
 dev.off()
 
 
@@ -1010,7 +1215,26 @@ is.numeric.mat <- function(mat) {
 #correlation matrix
 corrmat <- round(cor(LUCAS_geodata_WRB_rf[,is.numeric.mat(LUCAS_geodata_WRB_rf)], method="pearson"),2)
 corrmat_OC<-abs(corrmat[,"OC"])
-corrmat[,"OC"][order(corrmat_OC)]
+unlist(corrmat[,"OC"][order(corrmat_OC)])
+corrmat_OC[order(corrmat_OC)]
+
+corrmat_data<-LUCAS_geodata_WRB_rf[,is.numeric.mat(LUCAS_geodata_WRB_rf)]
+
+clay_r<-summary(lm(corrmat_data$OC ~ corrmat_data$clay))$r.squared
+silt_r<-summary(lm(corrmat_data$OC ~ corrmat_data$silt))$r.squared
+sand_r<-summary(lm(corrmat_data$OC ~ corrmat_data$sand))$r.squared
+K_r<-summary(lm(corrmat_data$OC ~ corrmat_data$K))$r.squared
+P_r<-summary(lm(corrmat_data$OC ~ corrmat_data$P))$r.squared
+coarse_r<-summary(lm(corrmat_data$OC ~ corrmat_data$coarse))$r.squared
+CaCO3_r<-summary(lm(corrmat_data$OC ~ corrmat_data$CaCO3))$r.squared
+long_r<-summary(lm(corrmat_data$OC ~ corrmat_data$Long))$r.squared
+CEC_r<-summary(lm(corrmat_data$OC ~ corrmat_data$CEC))$r.squared
+Lat_r<-summary(lm(corrmat_data$OC ~ corrmat_data$Lat))$r.squared
+pHinCaCl2_r<-summary(lm(corrmat_data$OC ~ corrmat_data$pHinCaCl2))$r.squared
+N_r<-summary(lm(corrmat_data$OC ~ corrmat_data$N))$r.squared
+
+
+round(N_r, 2)
 
 #splitting the datasets
 LUCAS_geodata_WRB_train_rf_full_LC<-LUCAS_geodata_WRB_train[,c("coarse", "clay", "silt", "sand", "pHinCaCl2", "OC", "CaCO3", "Country", "Long", "Lat", "LC0")]
@@ -1215,6 +1439,54 @@ plot(importance.CEC)
 dev.off()
 
 
+
+png("./Figures/Fig5.png", width=2400, height=1500, res=300)
+
+library(ggpubr)
+library(viridis)
+
+imp_LC_df_plot<-imp_LC_df[1:10,]
+imp_LC_df_plot$rank<-as.factor(imp_LC_df_plot$rank)
+
+imp_LC_df_plot$names= c("Clay fraction",
+                            "pH",
+                            "LC (if cropland)",
+                            "Latitude",
+                            "Longitude",
+                            "Sand fraction",
+                            "CaCO3",
+                            "Coarse fraction",
+                            "Silt fraction",
+                            "LC (if grassland)")
+
+labels_plot <- rev(imp_LC_df_plot$names)
+labels_plot[labels_plot=="CaCO3"] = ""
+
+dotchart(rev(imp_LC_df_plot$Overall), labels = labels_plot,
+                cex = 1.2, pch = 19, color = rev(inferno(12)[1:10])[as.numeric(imp_LC_df_plot$rank)],
+                main = "",
+                xlab = "Relative variable importance")  # Customize y-axis label here
+text(x = 27.7, y =  4 , expression(CaCO[3]), xpd = TRUE, cex=1.2, col=rev(inferno(12)[1:10])[4])
+
+
+segments(min(rev(imp_LC_df_plot$Overall))-2, (seq(1:10)), rev(imp_LC_df_plot$Overall), (seq(1:10)), col = rev(inferno(12)[1:10])[1:10][as.numeric(imp_LC_df_plot$rank)], lwd=5)
+points(rev(imp_LC_df_plot$Overall), seq(1:10),  cex = 2.3, pch = 19, col = rev(inferno(12)[1:10])[1:10][as.numeric(imp_LC_df_plot$rank)])
+text(rev(imp_LC_df_plot$Overall), seq(1:10), rev(round(imp_LC_df_plot$Overall, 0)) , col = "white", cex=0.7, xpd = TRUE)
+
+
+dev.off()
+
+
+
+chart<-dotchart(rev(imp_LC_df_plot$Overall), labels = rev(imp_LC_df_plot$names),
+         cex = 1.2, pch = 19, color = rev(inferno(12)[1:10])[as.numeric(imp_LC_df_plot$rank)],
+         main = "",
+         xlab = "Relative variable importance")  # Customize y-axis label here
+
+segments(min(rev(imp_LC_df_plot$Overall))-2, (seq(1:10)), rev(imp_LC_df_plot$Overall), (seq(1:10)), col = rev(inferno(12)[1:10])[1:10][as.numeric(imp_LC_df_plot$rank)], lwd=3)
+points(rev(imp_LC_df_plot$Overall), seq(1:10),  cex = 3, pch = 19, col = rev(inferno(12)[1:10])[1:10][as.numeric(imp_LC_df_plot$rank)])
+text(rev(imp_LC_df_plot$Overall), seq(1:10), rev(round(imp_LC_df_plot$Overall, 0)) , col = "white", cex=0.9)
+
 #<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
 #### Decision tree predictive model (exploration)
 #<*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*><*>
@@ -1274,4 +1546,75 @@ r2 = bquote(italic(R)^2 == .(format(round(tree.tuned_LC_lm$r.squared,2), digits 
 text(x = 13, y = 200, labels = r2)
 dev.off()
 
+
+
+
+
+
+mean(LUCAS_geodata_2009_2012_WRB_merged[LUCAS_geodata_2009_2012_WRB_merged$NUTS_0=="IE" & LUCAS_geodata_2009_2012_WRB_merged$LC0_simpl =="Grassland",]$clay)
+mean(LUCAS_geodata_2009_2012_WRB_merged[LUCAS_geodata_2009_2012_WRB_merged$NUTS_0=="IE" & LUCAS_geodata_2009_2012_WRB_merged$LC0_simpl =="Grassland",]$OC)
+
+table(LUCAS_geodata_2009_2012_WRB_merged[LUCAS_geodata_2009_2012_WRB_merged$NUTS_0=="IE",]$LC0_simpl)
+
+
+
+
+
+
+
+library(sf)
+library(ggplot2)
+library(rnaturalearth)
+
+
+# Define a custom bounding box for mainland Europe coordinates
+custom_bbox <- c(xmin = -10, xmax = 40, ymin = 35, ymax = 70)
+
+# Get world map data
+world_map <- ne_countries(scale = "medium", returnclass = "sf")
+
+
+eu_countries <- world_map[world_map$continent == "Europe" & world_map$name %in% c(
+  "Austria", "Belgium", "Bulgaria", "Croatia", "Cyprus", "Czechia", "Denmark",
+  "Estonia", "Finland", "France", "Germany", "Greece", "Hungary", "Ireland",
+  "Italy", "Latvia", "Lithuania", "Luxembourg", "Malta", "Netherlands",
+  "Poland", "Portugal", "Romania", "Slovakia", "Slovenia", "Spain", "Sweden", "United Kingdom"
+), ]
+
+eu_countries <- world_map[world_map$continent == "Europe", ]
+eu_countries$geounit
+
+
+proportion_data<-data.frame(Country=rownames(proportions_by_NUTS), Proportion=proportions_by_NUTS[,"Degraded"]*100)
+
+eu_countries <- merge(eu_countries, proportion_data[proportion_data$Country != "Croatia" & proportion_data$Country != "Luxembourg",], by.x = "geounit", by.y = "Country")
+
+
+
+# Define limits for x and y axes to focus on desired coordinates
+x_limits <- c(-10, 40)
+y_limits <- c(35, 70)
+
+
+# Download detailed coastline data
+#ne_coastline <- ne_download(scale = 10, type = "coastline", category = "physical", returnclass = "sf")
+
+plasma_palette <- plasma(5)
+
+# Plot the map with sea layer and limited coordinates
+graphabstr<-ggplot() +
+  geom_sf(data = world_map, fill = "lightgrey") + 
+  #geom_sf(data = ne_coastline, color = "black") + # Detailed sea layer
+  geom_sf(data = eu_countries, aes(fill = Proportion)) +
+  scale_fill_gradient(low = "dodgerblue", high = "red2", name = "degraded (%)") +
+  #scale_fill_viridis() +
+  labs(title = "Identified proportion of degraded soils based on LUCAS 2009 soil data") +
+  theme_minimal() +
+  xlim(x_limits) +
+  ylim(y_limits)
+graphabstr
+
+
+
+ggsave("./Figures/graphical_abstract.png", graphabstr, width = 8, height = 8, dpi = 300, bg="white")
 
